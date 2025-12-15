@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { X, Upload, Link as LinkIcon, Image as ImageIcon, Loader2, ExternalLink, Download } from 'lucide-react';
+import { X, Upload, Link as LinkIcon, Loader2, ExternalLink } from 'lucide-react';
 import { resizeImage, processUrlImage } from '../utils';
 
 interface AddPhotoModalProps {
