@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { 
-  Image as ImageIcon, 
-  Plus, 
+import {
+  Image as ImageIcon,
+  Plus,
   Search,
   Grid,
   X,
@@ -15,7 +15,6 @@ import {
   BookOpen,
   ChevronLeft,
   ChevronRight,
-  Sparkles,
   Zap,
   Droplets,
   Menu,
@@ -24,17 +23,17 @@ import {
   ArrowLeft
 } from 'lucide-react';
 
-import { Photo, PhotoMetadata, Album } from './types';
-import { PhotoCard } from './components/PhotoCard';
-import { AlbumCard } from './components/AlbumCard';
-import { AddPhotoModal } from './components/AddPhotoModal';
-import { AddToAlbumModal } from './components/AddToAlbumModal';
+import { Moment, MomentMetadata, Story } from './types';
+import { MomentCard } from './components/MomentCard';
+import { StoryCard } from './components/StoryCard';
+import { AddMomentModal } from './components/AddMomentModal';
+import { AddToStoryModal } from './components/AddToStoryModal';
 import { TypewriterText } from './components/TypewriterText';
 import { resizeImage } from './utils';
 import { saveState, loadState } from './storage';
 
 // Sample data
-const SAMPLE_PHOTOS: string[] = [
+const SAMPLE_MOMENTS: string[] = [
   "https://picsum.photos/id/10/800/800",
   "https://picsum.photos/id/129/800/800",
   "https://picsum.photos/id/1025/800/800",
@@ -52,7 +51,6 @@ const EFFECTS = [
   { name: 'None', value: 'none', icon: null },
   { name: 'Neon', value: 'neon', icon: <Zap size={14} /> },
   { name: 'Drip', value: 'drip', icon: <Droplets size={14} /> },
-  { name: 'Sparkle', value: 'sparkle', icon: <Sparkles size={14} /> },
 ];
 
 const COLORS = [
@@ -67,58 +65,60 @@ const COLORS = [
 ];
 
 const App: React.FC = () => {
-  const [photos, setPhotos] = useState<Photo[]>([]);
-  const [albums, setAlbums] = useState<Album[]>([]);
+  const [moments, setMoments] = useState<Moment[]>([]);
+  const [stories, setStories] = useState<Story[]>([]);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [isAddToAlbumModalOpen, setIsAddToAlbumModalOpen] = useState(false);
+  const [isAddToStoryModalOpen, setIsAddToStoryModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  
+
   // Persistence State
   const [isStorageInitialized, setIsStorageInitialized] = useState(false);
 
   // Navigation State
-  const [view, setView] = useState<'timeline' | 'albums' | 'album_detail'>('timeline');
-  const [currentAlbum, setCurrentAlbum] = useState<Album | null>(null);
+  const [view, setView] = useState<'timeline' | 'stories' | 'story_detail'>('timeline');
+  const [currentStory, setCurrentStory] = useState<Story | null>(null);
 
   // Selection & Editing
-  const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null); // For Lightbox
+  const [selectedMoment, setSelectedMoment] = useState<Moment | null>(null); // For Lightbox
   const [isEditingText, setIsEditingText] = useState(false);
-  
+
   // Multi-Selection State
   const [isSelectionMode, setIsSelectionMode] = useState(false);
-  const [selectedPhotoIds, setSelectedPhotoIds] = useState<Set<string>>(new Set());
+  const [selectedMomentIds, setSelectedMomentIds] = useState<Set<string>>(new Set());
 
   // Story Mode State
   const [isStoryMode, setIsStoryMode] = useState(false);
   const [storyIndex, setStoryIndex] = useState(0);
-  
+
   // Edit State
   const [editingTextValue, setEditingTextValue] = useState('');
   const [editingFontSize, setEditingFontSize] = useState(40);
   const [editingFontFamily, setEditingFontFamily] = useState('Anton');
   const [editingColor, setEditingColor] = useState('#FFFFFF');
-  const [editingEffect, setEditingEffect] = useState<PhotoMetadata['overlayEffect']>('none');
-  const [editingWordEffects, setEditingWordEffects] = useState<PhotoMetadata['overlayWordEffects']>([]);
+  const [editingEffect, setEditingEffect] = useState<MomentMetadata['overlayEffect']>('none');
+  const [editingWordEffects, setEditingWordEffects] = useState<MomentMetadata['overlayWordEffects']>([]);
   const [selectedWordIndex, setSelectedWordIndex] = useState<number | null>(null);
 
   const [isDragging, setIsDragging] = useState(false);
+
   const dragCounter = useRef(0);
+  const draggedMomentIdRef = useRef<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
   // Load state from storage on mount
   useEffect(() => {
     const loadData = async () => {
-      const savedPhotos = await loadState<Photo[]>('photos');
-      const savedAlbums = await loadState<Album[]>('albums');
+      const savedMoments = await loadState<Moment[]>('photos'); // Keep key 'photos' for data compat
+      const savedStories = await loadState<Story[]>('albums'); // Keep key 'albums' for data compat
 
-      if (savedPhotos && savedPhotos.length > 0) {
-        setPhotos(savedPhotos);
+      if (savedMoments && savedMoments.length > 0) {
+        setMoments(savedMoments);
       } else {
         // Init samples if no data found
-        const initialPhotos: Photo[] = [];
-        for (const [index, url] of SAMPLE_PHOTOS.entries()) {
-          initialPhotos.push({
+        const initialMoments: Moment[] = [];
+        for (const [index, url] of SAMPLE_MOMENTS.entries()) {
+          initialMoments.push({
             id: `sample-${index}`,
             url,
             mimeType: 'image/jpeg',
@@ -126,13 +126,19 @@ const App: React.FC = () => {
             createdAt: Date.now() + index
           });
         }
-        setPhotos(initialPhotos);
+        setMoments(initialMoments);
       }
 
-      if (savedAlbums) {
-        setAlbums(savedAlbums);
+      if (savedStories) {
+        // Migration: Ensure proper terminology in loaded data
+        const migratedStories = savedStories.map((s: any) => ({
+          ...s,
+          momentIds: s.momentIds || s.photoIds || [], // Migrate photoIds -> momentIds
+          coverMomentUrl: s.coverMomentUrl || s.coverPhotoUrl // Migrate coverPhotoUrl -> coverMomentUrl
+        }));
+        setStories(migratedStories);
       }
-      
+
       setIsStorageInitialized(true);
     };
     loadData();
@@ -141,15 +147,21 @@ const App: React.FC = () => {
   // Save state to storage whenever it changes
   useEffect(() => {
     if (!isStorageInitialized) return;
-    saveState('photos', photos);
-    saveState('albums', albums);
-  }, [photos, albums, isStorageInitialized]);
+    saveState('photos', moments);
+    saveState('albums', stories);
+  }, [moments, stories, isStorageInitialized]);
 
   // Handle Drag and Drop
   useEffect(() => {
     const handleDragEnter = (e: DragEvent) => {
       e.preventDefault();
       e.stopPropagation();
+
+      // Ignore internal drags
+      if (e.dataTransfer?.types.includes('application/x-story-matrix-moment')) {
+        return;
+      }
+
       dragCounter.current++;
       if (e.dataTransfer) {
         setIsDragging(true);
@@ -167,7 +179,7 @@ const App: React.FC = () => {
       e.preventDefault();
       e.stopPropagation();
     };
-    
+
     const handleDrop = async (e: DragEvent) => {
       e.preventDefault();
       e.stopPropagation();
@@ -175,22 +187,22 @@ const App: React.FC = () => {
       dragCounter.current = 0;
 
       // 1. Handle Files (Desktop drag)
-      if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+      if (e.dataTransfer?.types.includes('Files') && e.dataTransfer.files.length > 0) {
         const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
         if (files.length > 0) {
-           const processed = [];
-           for (const file of files) {
-             const result = await resizeImage(file);
-             processed.push({ ...result, source: 'upload' as const });
-           }
-           handleAddPhotos(processed);
+          const processed = [];
+          for (const file of files) {
+            const result = await resizeImage(file);
+            processed.push({ ...result, source: 'upload' as const });
+          }
+          handleAddMoments(processed);
         }
-      } 
+      }
       // 2. Handle URLs (Web drag, e.g. from Google Photos tab)
-      else if (e.dataTransfer) {
+      else if (e.dataTransfer && e.dataTransfer.types.includes('text/uri-list')) {
         const uri = e.dataTransfer.getData('text/uri-list');
         const html = e.dataTransfer.getData('text/html');
-        
+
         let imageUrl = uri;
         if (!imageUrl && html) {
           const srcMatch = html.match(/src="?([^"\s]+)"?/);
@@ -200,9 +212,9 @@ const App: React.FC = () => {
         }
 
         if (imageUrl) {
-          handleAddPhotos([{
+          handleAddMoments([{
             url: imageUrl,
-            base64: '', 
+            base64: '',
             mimeType: 'image/unknown',
             source: 'url'
           }]);
@@ -223,35 +235,36 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // Prepare photos for story mode (Sorted Oldest -> Newest)
-  const storyPhotos = useMemo(() => {
+  // Prepare photos for story mode (Respects Album Order)
+  const storyMoments = useMemo(() => {
     // Story Mode only works within an album now
-    if (view === 'album_detail' && currentAlbum) {
-      return photos
-        .filter(p => currentAlbum.photoIds.includes(p.id))
-        .sort((a, b) => a.createdAt - b.createdAt);
+    if (view === 'story_detail' && currentStory) {
+      const momentMap = new Map(moments.map(m => [m.id, m]));
+      return currentStory.momentIds
+        .map(id => momentMap.get(id))
+        .filter((m): m is Moment => !!m);
     }
     return [];
-  }, [photos, view, currentAlbum]);
+  }, [moments, view, currentStory]);
 
   // Story Mode Keyboard Navigation
   useEffect(() => {
     if (!isStoryMode) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'ArrowRight') {
-        setStoryIndex(i => (i + 1) % storyPhotos.length);
+        setStoryIndex(i => (i + 1) % storyMoments.length);
       } else if (e.key === 'ArrowLeft') {
-        setStoryIndex(i => (i - 1 + storyPhotos.length) % storyPhotos.length);
+        setStoryIndex(i => (i - 1 + storyMoments.length) % storyMoments.length);
       } else if (e.key === 'Escape') {
         setIsStoryMode(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isStoryMode, storyPhotos.length]);
+  }, [isStoryMode, storyMoments.length]);
 
-  const handleAddPhotos = (newFiles: { url: string; base64: string; mimeType: string; source: 'upload' | 'url' }[]) => {
-    setPhotos(prev => {
+  const handleAddMoments = (newFiles: { url: string; base64: string; mimeType: string; source: 'upload' | 'url' }[]) => {
+    setMoments(prev => {
       const existingBase64 = new Set(prev.map(p => p.base64).filter(Boolean));
       const existingUrls = new Set(prev.map(p => p.url));
 
@@ -265,41 +278,41 @@ const App: React.FC = () => {
 
       if (uniqueNewFiles.length === 0) return prev;
 
-      const newPhotos: Photo[] = uniqueNewFiles.map((f, i) => ({
-        id: `photo-${Date.now()}-${i}`,
+      const newMoments: Moment[] = uniqueNewFiles.map((f, i) => ({
+        id: `moment-${Date.now()}-${i}`,
         url: f.url,
         base64: f.base64,
         mimeType: f.mimeType,
         source: f.source,
         createdAt: Date.now()
       }));
-      return [...newPhotos, ...prev];
+      return [...newMoments, ...prev];
     });
   };
 
-  const deletePhoto = (id: string) => {
-    setPhotos(prev => prev.filter(p => p.id !== id));
-    // Also remove from albums
-    setAlbums(prev => prev.map(a => ({
-      ...a,
-      photoIds: a.photoIds.filter(pid => pid !== id)
+  const deleteMoment = (id: string) => {
+    setMoments(prev => prev.filter(m => m.id !== id));
+    // Also remove from stories
+    setStories(prev => prev.map(s => ({
+      ...s,
+      momentIds: s.momentIds.filter(mid => mid !== id)
     })));
-    if (selectedPhoto?.id === id) setSelectedPhoto(null);
+    if (selectedMoment?.id === id) setSelectedMoment(null);
   };
 
-  const deleteSelectedPhotos = () => {
-    const idsToDelete = Array.from(selectedPhotoIds);
-    setPhotos(prev => prev.filter(p => !idsToDelete.includes(p.id)));
-    setAlbums(prev => prev.map(a => ({
-      ...a,
-      photoIds: a.photoIds.filter(pid => !idsToDelete.includes(pid))
+  const deleteSelectedMoments = () => {
+    const idsToDelete = Array.from(selectedMomentIds);
+    setMoments(prev => prev.filter(m => !idsToDelete.includes(m.id)));
+    setStories(prev => prev.map(s => ({
+      ...s,
+      momentIds: s.momentIds.filter(mid => !idsToDelete.includes(mid))
     })));
-    setSelectedPhotoIds(new Set());
+    setSelectedMomentIds(new Set());
     setIsSelectionMode(false);
   };
 
   const handleToggleSelection = (id: string) => {
-    setSelectedPhotoIds(prev => {
+    setSelectedMomentIds(prev => {
       const next = new Set(prev);
       if (next.has(id)) {
         next.delete(id);
@@ -310,54 +323,73 @@ const App: React.FC = () => {
     });
   };
 
-  const handleCreateAlbum = (name: string) => {
-    const ids = Array.from(selectedPhotoIds);
-    // Find cover photo (first selected)
+  const handleCreateStory = (name: string) => {
+    const ids = Array.from(selectedMomentIds);
+    // Find cover (first selected)
     const coverId = ids[0];
-    const coverPhoto = photos.find(p => p.id === coverId);
+    const coverMoment = moments.find(m => m.id === coverId);
 
-    const newAlbum: Album = {
-      id: `album-${Date.now()}`,
+    const newStory: Story = {
+      id: `story-${Date.now()}`,
       title: name,
-      photoIds: ids,
+      momentIds: ids,
       createdAt: Date.now(),
-      coverPhotoUrl: coverPhoto?.url
+      coverMomentUrl: coverMoment?.url
     };
 
-    setAlbums(prev => [newAlbum, ...prev]);
-    setIsAddToAlbumModalOpen(false);
+    setStories(prev => [newStory, ...prev]);
+    setIsAddToStoryModalOpen(false);
     setIsSelectionMode(false);
-    setSelectedPhotoIds(new Set());
-    
-    // Switch to album view
-    setCurrentAlbum(newAlbum);
-    setView('album_detail');
+    setSelectedMomentIds(new Set());
+
+    // Switch to story view
+    setCurrentStory(newStory);
+    setView('story_detail');
   };
 
-  const handleAddToExistingAlbum = (albumId: string) => {
-    const ids = Array.from(selectedPhotoIds);
-    setAlbums(prev => prev.map(a => {
-       if (a.id === albumId) {
-         // Merge ids
-         const newIds = Array.from(new Set([...a.photoIds, ...ids]));
-         return { ...a, photoIds: newIds };
-       }
-       return a;
+  const handleAddToExistingStory = (storyId: string) => {
+    const ids = Array.from(selectedMomentIds);
+    setStories(prev => prev.map(s => {
+      if (s.id === storyId) {
+        // Merge ids
+        const newIds = Array.from(new Set([...s.momentIds, ...ids]));
+        return { ...s, momentIds: newIds };
+      }
+      return s;
     }));
-    setIsAddToAlbumModalOpen(false);
+    setIsAddToStoryModalOpen(false);
     setIsSelectionMode(false);
-    setSelectedPhotoIds(new Set());
+    setSelectedMomentIds(new Set());
   };
 
-  const updatePhotoMetadata = (id: string) => {
-    setPhotos(prev => prev.map(p => {
-      if (p.id === id) {
+  const handleReorder = (targetMoment: Moment) => {
+    const draggedId = draggedMomentIdRef.current;
+    if (!draggedId || !currentStory) return;
+    if (draggedId === targetMoment.id) return;
+
+    const ids = [...currentStory.momentIds];
+    const sourceIndex = ids.indexOf(draggedId);
+    const targetIndex = ids.indexOf(targetMoment.id);
+
+    if (sourceIndex === -1 || targetIndex === -1) return;
+
+    ids.splice(sourceIndex, 1);
+    ids.splice(targetIndex, 0, draggedId);
+
+    const newStory = { ...currentStory, momentIds: ids };
+    setCurrentStory(newStory);
+    setStories(prev => prev.map(s => s.id === newStory.id ? newStory : s));
+  };
+
+  const updateMomentMetadata = (id: string) => {
+    setMoments(prev => prev.map(m => {
+      if (m.id === id) {
         return {
-          ...p,
+          ...m,
           metadata: {
-            caption: p.metadata?.caption || '',
-            tags: p.metadata?.tags || [],
-            category: p.metadata?.category || 'Other',
+            caption: m.metadata?.caption || '',
+            tags: m.metadata?.tags || [],
+            category: m.metadata?.category || 'Other',
             overlayText: editingTextValue,
             overlayFontSize: editingFontSize,
             overlayFontFamily: editingFontFamily,
@@ -367,37 +399,37 @@ const App: React.FC = () => {
           }
         };
       }
-      return p;
+      return m;
     }));
   };
 
-  const openPhoto = (photo: Photo) => {
-    setSelectedPhoto(photo);
-    setEditingTextValue(photo.metadata?.overlayText || '');
-    setEditingFontSize(photo.metadata?.overlayFontSize || 40);
-    setEditingFontFamily(photo.metadata?.overlayFontFamily || 'Anton');
-    setEditingColor(photo.metadata?.overlayColor || '#FFFFFF');
-    setEditingEffect(photo.metadata?.overlayEffect || 'none');
-    setEditingWordEffects(photo.metadata?.overlayWordEffects || []);
+  const openMoment = (moment: Moment) => {
+    setSelectedMoment(moment);
+    setEditingTextValue(moment.metadata?.overlayText || '');
+    setEditingFontSize(moment.metadata?.overlayFontSize || 40);
+    setEditingFontFamily(moment.metadata?.overlayFontFamily || 'Anton');
+    setEditingColor(moment.metadata?.overlayColor || '#FFFFFF');
+    setEditingEffect(moment.metadata?.overlayEffect || 'none');
+    setEditingWordEffects(moment.metadata?.overlayWordEffects || []);
     setIsEditingText(false);
     setSelectedWordIndex(null);
   };
 
   const saveText = () => {
-    if (selectedPhoto) {
-      updatePhotoMetadata(selectedPhoto.id);
-      setSelectedPhoto(prev => prev ? {
+    if (selectedMoment) {
+      updateMomentMetadata(selectedMoment.id);
+      setSelectedMoment(prev => prev ? {
         ...prev,
         metadata: {
-            caption: prev.metadata?.caption || '',
-            tags: prev.metadata?.tags || [],
-            category: prev.metadata?.category || 'Other',
-            overlayText: editingTextValue,
-            overlayFontSize: editingFontSize,
-            overlayFontFamily: editingFontFamily,
-            overlayColor: editingColor,
-            overlayEffect: editingEffect,
-            overlayWordEffects: editingWordEffects
+          caption: prev.metadata?.caption || '',
+          tags: prev.metadata?.tags || [],
+          category: prev.metadata?.category || 'Other',
+          overlayText: editingTextValue,
+          overlayFontSize: editingFontSize,
+          overlayFontFamily: editingFontFamily,
+          overlayColor: editingColor,
+          overlayEffect: editingEffect,
+          overlayWordEffects: editingWordEffects
         }
       } : null);
       setIsEditingText(false);
@@ -409,7 +441,7 @@ const App: React.FC = () => {
   const handleTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newText = e.target.value;
     setEditingTextValue(newText);
-    
+
     // Resize effects array
     const wordCount = newText.split(' ').length;
     setEditingWordEffects(prev => {
@@ -430,7 +462,7 @@ const App: React.FC = () => {
         // Ensure array is big enough
         const wordCount = editingTextValue.split(' ').length;
         while (next.length < wordCount) next.push(null);
-        
+
         // Toggle: if clicking same effect, remove it? No, explicit 'none' exists.
         next[selectedWordIndex] = effectValue;
         return next;
@@ -442,14 +474,14 @@ const App: React.FC = () => {
   };
 
   const exportData = () => {
-    // Export both photos and albums
-    const data = { photos, albums };
+    // Export both moments and stories
+    const data = { moments, stories };
     const dataStr = JSON.stringify(data, null, 2);
     const blob = new Blob([dataStr], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `gallery-backup-${new Date().toISOString().slice(0,10)}.json`;
+    link.download = `gallery-backup-${new Date().toISOString().slice(0, 10)}.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -471,20 +503,27 @@ const App: React.FC = () => {
       try {
         const content = event.target?.result as string;
         const parsed = JSON.parse(content);
-        
-        // Handle legacy format (array of photos) vs new format (object with photos & albums)
+
+        // Handle legacy format (array of photos) vs new format (object with moments & stories)
         if (Array.isArray(parsed)) {
           // Legacy check
           const isValid = parsed.every(p => p.id && p.url);
-          if (isValid) setPhotos(parsed);
-        } else if (parsed.photos && Array.isArray(parsed.photos)) {
-          // New format
-          setPhotos(parsed.photos);
-          if (parsed.albums && Array.isArray(parsed.albums)) {
-             setAlbums(parsed.albums);
+          if (isValid) setMoments(parsed);
+        } else {
+          // Try new format / old format wrapper
+          if (parsed.moments && Array.isArray(parsed.moments)) {
+            setMoments(parsed.moments);
+          } else if (parsed.photos && Array.isArray(parsed.photos)) {
+            setMoments(parsed.photos);
+          }
+
+          if (parsed.stories && Array.isArray(parsed.stories)) {
+            setStories(parsed.stories);
+          } else if (parsed.albums && Array.isArray(parsed.albums)) {
+            setStories(parsed.albums); // Map albums to stories if needed, structure matches
           }
         }
-        
+
         if (importInputRef.current) importInputRef.current.value = '';
       } catch (err) {
         alert('Failed to parse backup file');
@@ -493,33 +532,36 @@ const App: React.FC = () => {
     reader.readAsText(file);
   };
 
-  const filteredPhotos = useMemo(() => {
-    let list = photos;
-    
-    // Filter by Album if in album view
-    if (view === 'album_detail' && currentAlbum) {
-      list = list.filter(p => currentAlbum.photoIds.includes(p.id));
+  const filteredMoments = useMemo(() => {
+    let list = moments;
+
+    // Filter by Story if in story view
+    if (view === 'story_detail' && currentStory) {
+      const momentMap = new Map(list.map(m => [m.id, m]));
+      list = currentStory.momentIds
+        .map(id => momentMap.get(id))
+        .filter((m): m is Moment => !!m);
     }
 
     if (!searchQuery.trim()) return list;
     // Simple search implementation
     const q = searchQuery.toLowerCase();
-    return list.filter(p => 
-      p.metadata?.caption?.toLowerCase().includes(q) || 
-      p.metadata?.tags?.some(t => t.toLowerCase().includes(q))
+    return list.filter(m =>
+      m.metadata?.caption?.toLowerCase().includes(q) ||
+      m.metadata?.tags?.some(t => t.toLowerCase().includes(q))
     );
-  }, [photos, searchQuery, view, currentAlbum]);
+  }, [moments, searchQuery, view, currentStory]);
 
   // Story Mode Render Helper
-  const currentStoryPhoto = storyPhotos[storyIndex];
+  const currentStoryMoment = storyMoments[storyIndex];
 
   return (
     <div className="min-h-screen bg-white flex flex-col font-sans">
-      
+
       {/* Header */}
       <header className={`sticky top-0 z-30 bg-white/90 backdrop-blur-sm px-4 h-16 flex items-center gap-4 border-b border-gray-200 transition-all ${isSelectionMode ? 'bg-blue-50 border-blue-200' : ''}`}>
         {/* Mobile Hamburger */}
-        <button 
+        <button
           className="md:hidden p-2 text-gray-600 hover:bg-gray-100 rounded-lg -ml-2"
           onClick={() => setIsMobileMenuOpen(true)}
         >
@@ -527,33 +569,33 @@ const App: React.FC = () => {
         </button>
 
         {isSelectionMode ? (
-           <div className="flex items-center justify-between w-full animate-in fade-in slide-in-from-top-2">
-              <div className="flex items-center gap-4">
-                 <button onClick={() => { setIsSelectionMode(false); setSelectedPhotoIds(new Set()); }} className="p-2 hover:bg-white rounded-full">
-                    <X size={20} className="text-gray-600" />
-                 </button>
-                 <span className="font-medium text-blue-900">{selectedPhotoIds.size} Selected</span>
-              </div>
-              <div className="flex items-center gap-2">
-                 {selectedPhotoIds.size > 0 && (
-                   <>
-                     <button 
-                       onClick={() => setIsAddToAlbumModalOpen(true)}
-                       className="flex items-center gap-2 px-4 py-2 bg-white text-blue-600 rounded-full text-sm font-medium shadow-sm hover:bg-blue-50 transition-colors"
-                     >
-                       <FolderPlus size={18} />
-                       <span className="hidden sm:inline">Add to Album</span>
-                     </button>
-                     <button 
-                       onClick={deleteSelectedPhotos}
-                       className="p-2 bg-red-100 text-red-600 rounded-full hover:bg-red-200 transition-colors"
-                     >
-                        <Trash2 size={20} />
-                     </button>
-                   </>
-                 )}
-              </div>
-           </div>
+          <div className="flex items-center justify-between w-full animate-in fade-in slide-in-from-top-2">
+            <div className="flex items-center gap-4">
+              <button onClick={() => { setIsSelectionMode(false); setSelectedMomentIds(new Set()); }} className="p-2 hover:bg-white rounded-full">
+                <X size={20} className="text-gray-600" />
+              </button>
+              <span className="font-medium text-blue-900">{selectedMomentIds.size} Selected</span>
+            </div>
+            <div className="flex items-center gap-2">
+              {selectedMomentIds.size > 0 && (
+                <>
+                  <button
+                    onClick={() => setIsAddToStoryModalOpen(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-white text-blue-600 rounded-full text-sm font-medium shadow-sm hover:bg-blue-50 transition-colors"
+                  >
+                    <FolderPlus size={18} />
+                    <span className="hidden sm:inline">Add to Story</span>
+                  </button>
+                  <button
+                    onClick={deleteSelectedMoments}
+                    className="p-2 bg-red-100 text-red-600 rounded-full hover:bg-red-200 transition-colors"
+                  >
+                    <Trash2 size={20} />
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
         ) : (
           <>
             <div className="flex items-center gap-2 pr-4 md:w-64">
@@ -592,14 +634,14 @@ const App: React.FC = () => {
       <div className="flex flex-1 relative">
         {/* Mobile Menu Overlay */}
         {isMobileMenuOpen && (
-          <div 
+          <div
             className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm md:hidden animate-in fade-in duration-200"
             onClick={() => setIsMobileMenuOpen(false)}
           />
         )}
 
         {/* Sidebar */}
-        <aside 
+        <aside
           className={`
             fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-2xl transform transition-transform duration-300 ease-in-out
             md:shadow-none md:translate-x-0 md:static md:block md:p-4 md:sticky md:top-16 md:h-[calc(100vh-64px)] md:overflow-y-auto md:border-r md:border-gray-100
@@ -607,45 +649,44 @@ const App: React.FC = () => {
           `}
         >
           <div className="flex justify-between items-center p-4 md:hidden border-b border-gray-100 mb-2">
-             <div className="flex items-center gap-2">
-                <div className="bg-blue-600 rounded-full p-1.5">
-                   <ImageIcon className="text-white w-4 h-4" />
-                </div>
-                <span className="font-bold text-lg text-gray-800">Menu</span>
-             </div>
-             <button onClick={() => setIsMobileMenuOpen(false)} className="p-1 text-gray-500 hover:bg-gray-100 rounded-full">
-               <X size={24} />
-             </button>
+            <div className="flex items-center gap-2">
+              <div className="bg-blue-600 rounded-full p-1.5">
+                <ImageIcon className="text-white w-4 h-4" />
+              </div>
+              <span className="font-bold text-lg text-gray-800">Menu</span>
+            </div>
+            <button onClick={() => setIsMobileMenuOpen(false)} className="p-1 text-gray-500 hover:bg-gray-100 rounded-full">
+              <X size={24} />
+            </button>
           </div>
 
           <div className="p-4 md:p-0">
             <nav className="space-y-1">
-              <button 
+              <button
                 onClick={() => { setView('timeline'); setIsMobileMenuOpen(false); }}
                 className={`w-full flex items-center gap-4 px-4 py-3 rounded-full font-medium transition-colors ${view === 'timeline' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-100'}`}
               >
-                <ImageIcon size={20} /> Photos
+                <ImageIcon size={20} /> Moments
               </button>
-              <button 
-                onClick={() => { setView('albums'); setIsMobileMenuOpen(false); }}
-                className={`w-full flex items-center gap-4 px-4 py-3 rounded-full font-medium transition-colors ${view === 'albums' || view === 'album_detail' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-100'}`}
+              <button
+                onClick={() => { setView('stories'); setIsMobileMenuOpen(false); }}
+                className={`w-full flex items-center gap-4 px-4 py-3 rounded-full font-medium transition-colors ${view === 'stories' || view === 'story_detail' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-100'}`}
               >
-                <Grid size={20} /> Albums
+                <Grid size={20} /> Stories
               </button>
-              {/* Story Mode button removed from sidebar as it is now context-specific to Albums */}
             </nav>
 
             <div className="mt-8 px-4">
               <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Storage</h3>
               <div className="space-y-1">
-                <button 
-                  onClick={exportData} 
+                <button
+                  onClick={exportData}
                   className="w-full flex items-center gap-3 px-3 py-2 text-gray-600 hover:bg-gray-100 hover:text-gray-900 rounded-lg text-sm transition-colors"
                 >
                   <Download size={18} /> Save Backup
                 </button>
-                <button 
-                  onClick={triggerImport} 
+                <button
+                  onClick={triggerImport}
                   className="w-full flex items-center gap-3 px-3 py-2 text-gray-600 hover:bg-gray-100 hover:text-gray-900 rounded-lg text-sm transition-colors"
                 >
                   <Upload size={18} /> Restore Backup
@@ -656,87 +697,87 @@ const App: React.FC = () => {
         </aside>
 
         {/* Hidden File Input (Shared between Mobile/Desktop) */}
-        <input 
-          type="file" 
-          ref={importInputRef} 
-          className="hidden" 
-          accept=".json" 
-          onChange={handleImportFile} 
+        <input
+          type="file"
+          ref={importInputRef}
+          className="hidden"
+          accept=".json"
+          onChange={handleImportFile}
         />
 
         {/* Main Content */}
         <main className="flex-1 p-4 md:p-8">
-          
+
           {/* Sub Header / Breadcrumbs */}
           <div className="flex items-center justify-between mb-6 h-10">
             {view === 'timeline' && (
               <>
-                 <h2 className="text-gray-800 font-medium text-lg">Timeline</h2>
-                 <div className="flex gap-2">
-                    <button 
-                      onClick={() => setIsSelectionMode(!isSelectionMode)}
-                      className={`text-xs font-medium px-3 py-1.5 rounded-full transition-colors flex items-center gap-2 ${isSelectionMode ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                    >
-                      <CheckSquare size={14} />
-                      {isSelectionMode ? 'Cancel Selection' : 'Select'}
-                    </button>
-                    <div className="text-xs text-gray-500 font-medium bg-gray-100 px-3 py-1.5 rounded-full flex items-center">
-                      {filteredPhotos.length} Items
-                    </div>
-                 </div>
+                <h2 className="text-gray-800 font-medium text-lg">Timeline</h2>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setIsSelectionMode(!isSelectionMode)}
+                    className={`text-xs font-medium px-3 py-1.5 rounded-full transition-colors flex items-center gap-2 ${isSelectionMode ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                  >
+                    <CheckSquare size={14} />
+                    {isSelectionMode ? 'Cancel Selection' : 'Select'}
+                  </button>
+                  <div className="text-xs text-gray-500 font-medium bg-gray-100 px-3 py-1.5 rounded-full flex items-center">
+                    {filteredMoments.length} Items
+                  </div>
+                </div>
               </>
             )}
 
-            {view === 'albums' && (
-              <h2 className="text-gray-800 font-medium text-lg">Albums</h2>
+            {view === 'stories' && (
+              <h2 className="text-gray-800 font-medium text-lg">Stories</h2>
             )}
 
-            {view === 'album_detail' && currentAlbum && (
-               <>
-                 <div className="flex items-center gap-2">
-                   <button onClick={() => setView('albums')} className="p-1 hover:bg-gray-100 rounded-full">
-                      <ArrowLeft size={20} />
-                   </button>
-                   <h2 className="text-gray-800 font-medium text-lg">{currentAlbum.title}</h2>
-                   <span className="text-gray-400 text-sm ml-2">({filteredPhotos.length})</span>
-                 </div>
-                 
-                 <button 
-                    onClick={() => {
-                      if (filteredPhotos.length > 0) {
-                        setStoryIndex(0);
-                        setIsStoryMode(true);
-                      }
-                    }}
-                    disabled={filteredPhotos.length === 0}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-full text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                 >
-                    <BookOpen size={18} />
-                    <span className="hidden sm:inline">Play Story</span>
-                 </button>
-               </>
+            {view === 'story_detail' && currentStory && (
+              <>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setView('stories')} className="p-1 hover:bg-gray-100 rounded-full">
+                    <ArrowLeft size={20} />
+                  </button>
+                  <h2 className="text-gray-800 font-medium text-lg">{currentStory.title}</h2>
+                  <span className="text-gray-400 text-sm ml-2">({filteredMoments.length})</span>
+                </div>
+
+                <button
+                  onClick={() => {
+                    if (filteredMoments.length > 0) {
+                      setStoryIndex(0);
+                      setIsStoryMode(true);
+                    }
+                  }}
+                  disabled={filteredMoments.length === 0}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-full text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <BookOpen size={18} />
+                  <span className="hidden sm:inline">Play Story</span>
+                </button>
+              </>
             )}
           </div>
 
           {/* Views */}
-          {view === 'albums' ? (
+          {view === 'stories' ? (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-              {albums.length === 0 ? (
+              {stories.length === 0 ? (
                 <div className="col-span-full flex flex-col items-center justify-center py-20 text-center space-y-4">
                   <div className="bg-gray-100 p-6 rounded-full">
                     <Grid size={48} className="text-gray-300" />
                   </div>
-                  <p className="text-gray-500 text-lg">No albums yet</p>
-                  <p className="text-gray-400 text-sm">Select photos from your timeline to create one.</p>
+                  <p className="text-gray-500 text-lg">No stories yet</p>
+                  <p className="text-gray-400 text-sm">Select moments from your timeline to create one.</p>
                 </div>
               ) : (
-                albums.map(album => (
-                  <AlbumCard 
-                    key={album.id} 
-                    album={album}
-                    onClick={(a) => {
-                      setCurrentAlbum(a);
-                      setView('album_detail');
+                stories.map(story => (
+                  <StoryCard
+                    key={story.id}
+                    story={story}
+                    onClick={(s) => {
+                      setCurrentStory(s);
+                      setView('story_detail');
                     }}
                   />
                 ))
@@ -744,27 +785,35 @@ const App: React.FC = () => {
             </div>
           ) : (
             <>
-              {filteredPhotos.length === 0 ? (
+              {filteredMoments.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
                   <div className="bg-gray-100 p-6 rounded-full">
                     <ImageIcon size={48} className="text-gray-300" />
                   </div>
                   <p className="text-gray-500 text-lg">
-                    {view === 'album_detail' ? 'This album is empty' : 'Your gallery is empty'}
+                    {view === 'story_detail' ? 'This story is empty' : 'Your gallery is empty'}
                   </p>
                   {view === 'timeline' && <p className="text-gray-400 text-sm">Drag and drop photos here from your computer or Google Photos</p>}
                 </div>
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
-                  {filteredPhotos.map(photo => (
-                    <PhotoCard 
-                      key={photo.id} 
-                      photo={photo} 
-                      onDelete={deletePhoto}
-                      onClick={openPhoto}
+                  {filteredMoments.map(moment => (
+                    <MomentCard
+                      key={moment.id}
+                      moment={moment}
+                      onDelete={deleteMoment}
+                      onClick={openMoment}
                       isSelectionMode={isSelectionMode}
-                      isSelected={selectedPhotoIds.has(photo.id)}
+                      isSelected={selectedMomentIds.has(moment.id)}
                       onToggleSelect={handleToggleSelection}
+                      draggable={view === 'story_detail' && !isSelectionMode}
+                      onDragStart={(e, m) => {
+                        e.dataTransfer.effectAllowed = 'move';
+                        e.dataTransfer.setData('text/plain', m.id);
+                        e.dataTransfer.setData('application/x-story-matrix-moment', m.id);
+                        draggedMomentIdRef.current = m.id;
+                      }}
+                      onReorder={handleReorder}
                     />
                   ))}
                 </div>
@@ -777,29 +826,29 @@ const App: React.FC = () => {
 
       {/* Drag Overlay */}
       {isDragging && (
-        <div 
+        <div
           className="fixed inset-0 z-50 bg-blue-500/10 backdrop-blur-sm border-8 border-blue-400 border-dashed m-4 rounded-3xl flex items-center justify-center animate-in fade-in duration-200"
           onClick={(e) => {
-             e.preventDefault();
-             e.stopPropagation();
-             setIsDragging(false);
-             dragCounter.current = 0;
+            e.preventDefault();
+            e.stopPropagation();
+            setIsDragging(false);
+            dragCounter.current = 0;
           }}
         >
-           <div className="bg-white p-8 rounded-2xl shadow-2xl flex flex-col items-center text-blue-600 pointer-events-none">
-             <UploadCloud size={64} className="mb-4 animate-bounce" />
-             <h2 className="text-2xl font-bold">Drop photos here</h2>
-             <p className="text-sm text-gray-400 mt-2">Click anywhere to cancel</p>
-           </div>
+          <div className="bg-white p-8 rounded-2xl shadow-2xl flex flex-col items-center text-blue-600 pointer-events-none">
+            <UploadCloud size={64} className="mb-4 animate-bounce" />
+            <h2 className="text-2xl font-bold">Drop moments here</h2>
+            <p className="text-sm text-gray-400 mt-2">Click anywhere to cancel</p>
+          </div>
         </div>
       )}
 
       {/* Story Mode Overlay */}
-      {isStoryMode && currentStoryPhoto && (
+      {isStoryMode && currentStoryMoment && (
         <div className="fixed inset-0 z-[60] bg-black flex flex-col animate-in fade-in duration-300">
           <div className="absolute top-0 right-0 p-6 z-50">
-            <button 
-              onClick={() => setIsStoryMode(false)} 
+            <button
+              onClick={() => setIsStoryMode(false)}
               className="p-3 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
             >
               <X size={24} />
@@ -808,10 +857,10 @@ const App: React.FC = () => {
 
           <div className="flex-1 flex items-center justify-between relative px-4 md:px-12 w-full h-full">
             {/* Previous Button */}
-            <button 
+            <button
               onClick={(e) => {
                 e.stopPropagation();
-                setStoryIndex(i => (i - 1 + storyPhotos.length) % storyPhotos.length);
+                setStoryIndex(i => (i - 1 + storyMoments.length) % storyMoments.length);
               }}
               className="absolute left-2 md:static z-20 p-2 md:p-4 rounded-full bg-black/30 md:bg-white/5 hover:bg-white/20 text-white transition-all md:hover:scale-110 backdrop-blur-sm md:backdrop-blur-none"
             >
@@ -820,101 +869,97 @@ const App: React.FC = () => {
 
             {/* Main Content */}
             <div className="flex-1 flex items-center justify-center h-full relative p-4">
-               <div className="relative max-h-full max-w-full">
-                  <img 
-                    src={currentStoryPhoto.url} 
-                    className="max-h-[85vh] max-w-full object-contain shadow-2xl rounded-lg"
-                    alt="Story item"
-                  />
-                  {/* Overlay for Story Mode */}
-                  {currentStoryPhoto.metadata?.overlayText && (
-                    <div className="absolute inset-0 flex items-end justify-center p-8 pointer-events-none">
-                      <TypewriterText 
-                        text={currentStoryPhoto.metadata.overlayText}
-                        wordEffects={currentStoryPhoto.metadata.overlayWordEffects}
-                        globalEffect={currentStoryPhoto.metadata.overlayEffect}
-                        className="font-black text-center leading-tight tracking-wide break-words w-full"
-                        style={{ 
-                          // Only apply drop shadow if no specific effect is active to avoid conflict with effect shadows
-                          textShadow: currentStoryPhoto.metadata.overlayEffect && currentStoryPhoto.metadata.overlayEffect !== 'none' 
-                            ? undefined 
-                            : '3px 3px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000',
-                          fontSize: (currentStoryPhoto.metadata.overlayFontSize || 40) + 'px',
-                          fontFamily: currentStoryPhoto.metadata.overlayFontFamily || 'Anton',
-                          color: currentStoryPhoto.metadata.overlayColor || '#FFFFFF'
-                        }}
-                      />
-                    </div>
-                  )}
-               </div>
+              <div className="relative max-h-full max-w-full">
+                <img
+                  src={currentStoryMoment.url}
+                  className="max-h-[85vh] max-w-full object-contain shadow-2xl rounded-lg"
+                  alt="Story item"
+                />
+                {/* Overlay for Story Mode */}
+                {currentStoryMoment.metadata?.overlayText && (
+                  <div className="absolute inset-0 flex items-end justify-center p-8 pointer-events-none">
+                    <TypewriterText
+                      text={currentStoryMoment.metadata.overlayText}
+                      wordEffects={currentStoryMoment.metadata.overlayWordEffects}
+                      globalEffect={currentStoryMoment.metadata.overlayEffect}
+                      className="font-black text-center leading-tight tracking-wide break-words w-full"
+                      style={{
+                        fontSize: (currentStoryMoment.metadata.overlayFontSize || 40) + 'px',
+                        fontFamily: currentStoryMoment.metadata.overlayFontFamily || 'Anton',
+                        color: currentStoryMoment.metadata.overlayColor || '#FFFFFF',
+                        textShadow: '3px 3px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000',
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Next Button */}
-            <button 
-               onClick={(e) => {
+            <button
+              onClick={(e) => {
                 e.stopPropagation();
-                setStoryIndex(i => (i + 1) % storyPhotos.length);
+                setStoryIndex(i => (i + 1) % storyMoments.length);
               }}
               className="absolute right-2 md:static z-20 p-2 md:p-4 rounded-full bg-black/30 md:bg-white/5 hover:bg-white/20 text-white transition-all md:hover:scale-110 backdrop-blur-sm md:backdrop-blur-none"
             >
               <ChevronRight size={32} className="md:w-12 md:h-12" />
             </button>
           </div>
-          
+
           {/* Footer Info */}
           <div className="h-16 flex flex-col items-center justify-center text-white/50 bg-gradient-to-t from-black/80 to-transparent">
-             <div className="text-sm font-medium tracking-widest uppercase mb-1">
-                Story Mode: {currentAlbum?.title || 'Album'}
-             </div>
-             <div className="text-xs">
-                {storyIndex + 1} of {storyPhotos.length}
-             </div>
+            <div className="text-sm font-medium tracking-widest uppercase mb-1">
+              Story Mode: {currentStory?.title || 'Story'}
+            </div>
+            <div className="text-xs">
+              {storyIndex + 1} of {storyMoments.length}
+            </div>
           </div>
         </div>
       )}
 
       {/* Lightbox */}
-      {selectedPhoto && (
-        <div 
+      {selectedMoment && (
+        <div
           className="fixed inset-0 z-50 bg-black/95 flex animate-in fade-in duration-200"
           onClick={() => {
             // Prevent accidental closing if user is in the middle of editing
             if (isEditingText) return;
-            setSelectedPhoto(null);
+            setSelectedMoment(null);
           }}
         >
           {/* Top Toolbar */}
-          <div 
+          <div
             className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center text-white z-20 bg-gradient-to-b from-black/50 to-transparent"
             onClick={(e) => e.stopPropagation()}
           >
-            <button onClick={() => setSelectedPhoto(null)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+            <button onClick={() => setSelectedMoment(null)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
               <X size={24} />
             </button>
             <div className="flex gap-2">
-              <button 
+              <button
                 onClick={(e) => {
-                   e.stopPropagation();
-                   if (isEditingText) {
-                     saveText();
-                   } else {
-                     setIsEditingText(true);
-                   }
+                  e.stopPropagation();
+                  if (isEditingText) {
+                    saveText();
+                  } else {
+                    setIsEditingText(true);
+                  }
                 }}
-                className={`flex items-center gap-2 px-4 py-2 rounded-full font-medium transition-colors ${
-                  isEditingText 
-                    ? 'bg-blue-600 hover:bg-blue-700 text-white' 
-                    : 'bg-white/10 hover:bg-white/20 text-white'
-                }`}
+                className={`flex items-center gap-2 px-4 py-2 rounded-full font-medium transition-colors ${isEditingText
+                  ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                  : 'bg-white/10 hover:bg-white/20 text-white'
+                  }`}
               >
                 {isEditingText ? <Check size={18} /> : <TypeIcon size={18} />}
                 {isEditingText ? 'Save Text' : 'Edit Text'}
               </button>
-              
-              <button 
+
+              <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  deletePhoto(selectedPhoto.id);
+                  deleteMoment(selectedMoment.id);
                 }}
                 className="p-2 hover:bg-red-500/20 text-red-400 rounded-full transition-colors"
               >
@@ -924,40 +969,43 @@ const App: React.FC = () => {
           </div>
 
           <div className="flex-1 flex items-center justify-center p-4 w-full h-full relative">
-            <div 
-              className="relative max-h-full max-w-full" 
+            <div
+              className="relative max-h-full max-w-full"
               onClick={(e) => e.stopPropagation()}
             >
-              <img 
-                src={selectedPhoto.url} 
+              <img
+                src={selectedMoment.url}
                 className="max-h-[90vh] max-w-full object-contain shadow-2xl"
               />
-              
+
               {/* Overlay Text Display (Lightbox) */}
-              {!isEditingText && selectedPhoto.metadata?.overlayText && (
+              {!isEditingText && selectedMoment.metadata?.overlayText && (
                 <div className="absolute inset-0 flex items-end justify-center p-8 pointer-events-none">
-                  <p 
+                  <p
                     className={`font-black text-center leading-tight tracking-wide break-words w-full`}
-                    style={{ 
-                      fontSize: (selectedPhoto.metadata.overlayFontSize || 40) + 'px',
-                      fontFamily: selectedPhoto.metadata.overlayFontFamily || 'Anton',
-                      color: selectedPhoto.metadata.overlayColor || '#FFFFFF'
+                    style={{
+                      fontSize: (selectedMoment.metadata.overlayFontSize || 40) + 'px',
+                      fontFamily: selectedMoment.metadata.overlayFontFamily || 'Anton',
+                      color: selectedMoment.metadata.overlayColor || '#FFFFFF'
                     }}
                   >
-                    {selectedPhoto.metadata.overlayText.split(' ').map((word, index) => {
-                      const effect = selectedPhoto.metadata?.overlayWordEffects?.[index] || selectedPhoto.metadata?.overlayEffect;
+                    {selectedMoment.metadata.overlayText.split(' ').map((word, index) => {
+                      const effect = selectedMoment.metadata?.overlayWordEffects?.[index] || selectedMoment.metadata?.overlayEffect;
                       return (
-                         <span 
-                           key={index}
-                           className={effect && effect !== 'none' ? `effect-${effect}` : ''}
-                           style={{
-                              textShadow: effect && effect !== 'none' 
-                                ? undefined 
-                                : '3px 3px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000',
-                           }}
-                         >
-                           {word}{' '}
-                         </span>
+                        <span
+                          key={index}
+                          className={effect && effect !== 'none' ? `effect-${effect}` : ''}
+                          style={{
+                            textShadow: effect && effect !== 'none'
+                              ? undefined
+                              : '3px 3px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000',
+                            '--text-color': selectedMoment.metadata?.overlayColor || '#FFFFFF',
+                            '--neon-duration': effect === 'neon' ? `${2 + (index % 3)}s` : undefined,
+                            '--neon-delay': effect === 'neon' ? `${(index % 5) * -0.7}s` : undefined,
+                          } as React.CSSProperties}
+                        >
+                          {word}{' '}
+                        </span>
                       );
                     })}
                   </p>
@@ -966,162 +1014,163 @@ const App: React.FC = () => {
 
               {/* Edit Mode Controls */}
               {isEditingText && (
-                 <div className="absolute inset-0 flex flex-col justify-end">
-                    {/* Toolbar */}
-                    <div 
-                      className="bg-black/80 backdrop-blur-md p-4 flex flex-col gap-4 animate-in slide-in-from-bottom-10"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {/* Row 0: Word Selector */}
-                      {editingTextValue.trim() && (
-                        <div className="flex flex-wrap justify-center gap-2 max-w-2xl mx-auto py-2">
-                           <span className="text-white/50 text-xs w-full text-center mb-1">Tap words to apply effects:</span>
-                           {editingTextValue.split(' ').map((word, index) => {
-                              const active = selectedWordIndex === index;
-                              const hasEffect = editingWordEffects?.[index] && editingWordEffects[index] !== 'none';
-                              
-                              return (
-                                <button
-                                  key={index}
-                                  onClick={() => setSelectedWordIndex(active ? null : index)}
-                                  className={`
+                <div className="absolute inset-0 flex flex-col justify-end">
+                  {/* Toolbar */}
+                  <div
+                    className="bg-black/80 backdrop-blur-md p-4 flex flex-col gap-4 animate-in slide-in-from-bottom-10"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {/* Row 0: Word Selector */}
+                    {editingTextValue.trim() && (
+                      <div className="flex flex-wrap justify-center gap-2 max-w-2xl mx-auto py-2">
+                        <span className="text-white/50 text-xs w-full text-center mb-1">Tap words to apply effects:</span>
+                        {editingTextValue.split(' ').map((word, index) => {
+                          const active = selectedWordIndex === index;
+                          const hasEffect = editingWordEffects?.[index] && editingWordEffects[index] !== 'none';
+
+                          return (
+                            <button
+                              key={index}
+                              onClick={() => setSelectedWordIndex(active ? null : index)}
+                              className={`
                                     px-3 py-1 rounded-full text-sm font-medium transition-all border
-                                    ${active 
-                                      ? 'bg-blue-600 border-blue-400 text-white scale-110 shadow-lg ring-2 ring-blue-300/50' 
-                                      : 'bg-white/10 border-white/20 text-white hover:bg-white/20'}
+                                    ${active
+                                  ? 'bg-blue-600 border-blue-400 text-white scale-110 shadow-lg ring-2 ring-blue-300/50'
+                                  : 'bg-white/10 border-white/20 text-white hover:bg-white/20'}
                                     ${hasEffect && !active ? 'border-green-400/50 text-green-100' : ''}
                                   `}
-                                >
-                                  {word}
-                                  {hasEffect && <span className="ml-1 text-[10px] text-green-400">★</span>}
-                                </button>
-                              );
-                           })}
-                        </div>
-                      )}
-
-                      {/* Row 1: Font & Size */}
-                      <div className="flex flex-wrap items-center gap-4 justify-center text-white">
-                        <select 
-                          value={editingFontFamily}
-                          onChange={(e) => setEditingFontFamily(e.target.value)}
-                          className="bg-gray-800 border border-gray-600 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500"
-                        >
-                          {FONTS.map(font => (
-                            <option key={font.value} value={font.value}>{font.name}</option>
-                          ))}
-                        </select>
-
-                        <div className="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-1.5">
-                          <span className="text-xs text-gray-400">Size</span>
-                          <input 
-                            type="range" 
-                            min="16" 
-                            max="120" 
-                            value={editingFontSize}
-                            onChange={(e) => setEditingFontSize(Number(e.target.value))}
-                            className="w-24 h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                          />
-                          <span className="text-xs w-6 text-center">{editingFontSize}</span>
-                        </div>
+                            >
+                              {word}
+                              {hasEffect && <span className="ml-1 text-[10px] text-green-400">★</span>}
+                            </button>
+                          );
+                        })}
                       </div>
+                    )}
 
-                      {/* Row 2: Colors & Effects */}
-                      <div className="flex flex-col md:flex-row items-center justify-center gap-4">
-                        {/* Effects Selector */}
-                        <div className="flex gap-2 bg-gray-800 p-1 rounded-lg">
-                           {EFFECTS.map(effect => {
-                             // Check if this effect is active (either globally or for selected word)
-                             let isActive = false;
-                             if (selectedWordIndex !== null) {
-                               isActive = editingWordEffects?.[selectedWordIndex] === effect.value;
-                             } else {
-                               isActive = editingEffect === effect.value;
-                             }
+                    {/* Row 1: Font & Size */}
+                    <div className="flex flex-wrap items-center gap-4 justify-center text-white">
+                      <select
+                        value={editingFontFamily}
+                        onChange={(e) => setEditingFontFamily(e.target.value)}
+                        className="bg-gray-800 border border-gray-600 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500"
+                      >
+                        {FONTS.map(font => (
+                          <option key={font.value} value={font.value}>{font.name}</option>
+                        ))}
+                      </select>
 
-                             return (
-                               <button
-                                 key={effect.value}
-                                 onClick={() => handleEffectSelect(effect.value)}
-                                 title={effect.name}
-                                 className={`p-2 rounded-md transition-all ${isActive ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-gray-700'}`}
-                               >
-                                 {effect.icon ? effect.icon : <span className="text-xs font-bold px-1">T</span>}
-                               </button>
-                             );
-                           })}
-                        </div>
-
-                        {/* Colors */}
-                        <div className="flex items-center justify-center gap-2">
-                           {COLORS.map(color => (
-                             <button
-                               key={color}
-                               onClick={() => setEditingColor(color)}
-                               className={`w-6 h-6 rounded-full border-2 transition-transform hover:scale-110 ${editingColor === color ? 'border-white scale-110' : 'border-transparent'}`}
-                               style={{ backgroundColor: color }}
-                             />
-                           ))}
-                           {/* Custom color input */}
-                           <div className="relative">
-                              <label className="w-6 h-6 rounded-full bg-gradient-to-br from-red-500 via-green-500 to-blue-500 flex items-center justify-center cursor-pointer border-2 border-transparent hover:scale-110 transition-transform">
-                                <input 
-                                  type="color" 
-                                  value={editingColor}
-                                  onChange={(e) => setEditingColor(e.target.value)}
-                                  className="opacity-0 absolute inset-0 w-full h-full cursor-pointer"
-                                />
-                                <Palette size={12} className="text-white drop-shadow-md" />
-                              </label>
-                           </div>
-                        </div>
-                      </div>
-
-                      {/* Input Field */}
-                      <div className="flex justify-center w-full">
-                        <input 
-                          autoFocus
-                          type="text" 
-                          value={editingTextValue}
-                          onChange={handleTextChange}
-                          placeholder="Type your caption..."
-                          className={`w-full max-w-2xl bg-white/10 border-b-2 border-white/30 px-2 py-2 text-center focus:outline-none focus:border-blue-500 focus:bg-white/20 transition-all placeholder-white/50`}
-                          style={{
-                            fontSize: Math.min(editingFontSize, 60) + 'px', 
-                            fontFamily: editingFontFamily,
-                            color: editingColor,
-                            // Preview rendering in input is tricky with word effects, so keep input simple
-                            // The real preview is the image behind
-                            textShadow: '2px 2px 0 #000'
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') saveText();
-                          }}
+                      <div className="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-1.5">
+                        <span className="text-xs text-gray-400">Size</span>
+                        <input
+                          type="range"
+                          min="16"
+                          max="120"
+                          value={editingFontSize}
+                          onChange={(e) => setEditingFontSize(Number(e.target.value))}
+                          className="w-24 h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
                         />
+                        <span className="text-xs w-6 text-center">{editingFontSize}</span>
                       </div>
                     </div>
-                 </div>
+
+                    {/* Row 2: Colors & Effects */}
+                    <div className="flex flex-col md:flex-row items-center justify-center gap-4">
+                      {/* Effects Selector */}
+                      <div className="flex gap-2 bg-gray-800 p-1 rounded-lg">
+                        {EFFECTS.map(effect => {
+                          // Check if this effect is active (either globally or for selected word)
+                          let isActive = false;
+                          if (selectedWordIndex !== null) {
+                            isActive = editingWordEffects?.[selectedWordIndex] === effect.value;
+                          } else {
+                            isActive = editingEffect === effect.value;
+                          }
+
+                          return (
+                            <button
+                              key={effect.value}
+                              onClick={() => handleEffectSelect(effect.value)}
+                              title={effect.name}
+                              className={`p-2 rounded-md transition-all ${isActive ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-gray-700'}`}
+                            >
+                              {effect.icon ? effect.icon : <span className="text-xs font-bold px-1">T</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Colors */}
+                      <div className="flex items-center justify-center gap-2">
+                        {COLORS.map(color => (
+                          <button
+                            key={color}
+                            onClick={() => setEditingColor(color)}
+                            className={`w-6 h-6 rounded-full border-2 transition-transform hover:scale-110 ${editingColor === color ? 'border-white scale-110' : 'border-transparent'}`}
+                            style={{ backgroundColor: color }}
+                          />
+                        ))}
+                        {/* Custom color input */}
+                        <div className="relative">
+                          <label className="w-6 h-6 rounded-full bg-gradient-to-br from-red-500 via-green-500 to-blue-500 flex items-center justify-center cursor-pointer border-2 border-transparent hover:scale-110 transition-transform">
+                            <input
+                              type="color"
+                              value={editingColor}
+                              onChange={(e) => setEditingColor(e.target.value)}
+                              className="opacity-0 absolute inset-0 w-full h-full cursor-pointer"
+                            />
+                            <Palette size={12} className="text-white drop-shadow-md" />
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Input Field */}
+                    <div className="flex justify-center w-full">
+                      <input
+                        autoFocus
+                        type="text"
+                        value={editingTextValue}
+                        onChange={handleTextChange}
+                        placeholder="Type your caption..."
+                        className={`w-full max-w-2xl bg-white/10 border-b-2 border-white/30 px-2 py-2 text-center focus:outline-none focus:border-blue-500 focus:bg-white/20 transition-all placeholder-white/50`}
+                        style={{
+                          fontSize: Math.min(editingFontSize, 60) + 'px',
+                          fontFamily: editingFontFamily,
+                          color: editingColor,
+                          // Preview rendering in input is tricky with word effects, so keep input simple
+                          // The real preview is the image behind
+                          textShadow: '2px 2px 0 #000'
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') saveText();
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
           </div>
         </div>
-      )}
+      )
+      }
 
-      <AddPhotoModal 
-        isOpen={isAddModalOpen} 
-        onClose={() => setIsAddModalOpen(false)} 
-        onAdd={handleAddPhotos} 
+      <AddMomentModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onAdd={handleAddMoments}
       />
 
-      <AddToAlbumModal
-        isOpen={isAddToAlbumModalOpen}
-        onClose={() => setIsAddToAlbumModalOpen(false)}
-        albums={albums}
-        onAddToNew={handleCreateAlbum}
-        onAddToExisting={handleAddToExistingAlbum}
-        selectedCount={selectedPhotoIds.size}
+      <AddToStoryModal
+        isOpen={isAddToStoryModalOpen}
+        onClose={() => setIsAddToStoryModalOpen(false)}
+        stories={stories}
+        onAddToNew={handleCreateStory}
+        onAddToExisting={handleAddToExistingStory}
+        selectedCount={selectedMomentIds.size}
       />
-    </div>
+    </div >
   );
 };
 

@@ -1,4 +1,4 @@
-export interface PhotoMetadata {
+export interface MomentMetadata {
   caption: string;
   tags: string[];
   category: 'People' | 'Nature' | 'Animals' | 'Documents' | 'Food' | 'Urban' | 'Other';
@@ -6,25 +6,27 @@ export interface PhotoMetadata {
   overlayFontSize?: number;
   overlayFontFamily?: string;
   overlayColor?: string;
-  overlayEffect?: 'none' | 'neon' | 'drip' | 'sparkle';
-  overlayWordEffects?: ('none' | 'neon' | 'drip' | 'sparkle' | null)[];
+  overlayEffect?: 'none' | 'neon' | 'drip';
+  overlayWordEffects?: ('none' | 'neon' | 'drip' | null)[];
 }
 
-export interface Photo {
+export interface Moment {
   id: string;
   url: string;
   base64?: string;
   mimeType: string;
   source: 'upload' | 'url' | 'sample';
-  metadata?: PhotoMetadata;
+  metadata?: MomentMetadata;
   createdAt: number;
 }
 
-export interface Album {
+export interface Story {
   id: string;
   title: string;
-  coverPhotoUrl?: string;
-  photoIds: string[];
+  coverPhotoUrl?: string; // Keep as coverPhotoUrl or change to coverMomentUrl? Let's keep it generic for now or match. "coverUrl" might be better but let's stick to simple rename first.
+  // Actually, to be consistent:
+  coverMomentUrl?: string;
+  momentIds: string[]; // photoIds -> momentIds
   createdAt: number;
 }
 

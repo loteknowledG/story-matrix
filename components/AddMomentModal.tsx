@@ -2,13 +2,13 @@ import React, { useState, useRef } from 'react';
 import { X, Upload, Link as LinkIcon, Loader2, ExternalLink } from 'lucide-react';
 import { resizeImage, processUrlImage } from '../utils';
 
-interface AddPhotoModalProps {
+interface AddMomentModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAdd: (files: { url: string; base64: string; mimeType: string; source: 'upload' | 'url' }[]) => void;
 }
 
-export const AddPhotoModal: React.FC<AddPhotoModalProps> = ({ isOpen, onClose, onAdd }) => {
+export const AddMomentModal: React.FC<AddMomentModalProps> = ({ isOpen, onClose, onAdd }) => {
   const [activeTab, setActiveTab] = useState<'upload' | 'google' | 'url'>('upload');
   const [urlInput, setUrlInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -54,11 +54,11 @@ export const AddPhotoModal: React.FC<AddPhotoModalProps> = ({ isOpen, onClose, o
       } catch (corsError) {
         throw new Error("Cannot access this image URL. Try downloading it instead.");
       }
-      onAdd([{ 
-        url: urlInput, 
-        base64: imageData.base64, 
-        mimeType: imageData.mimeType, 
-        source: 'url' 
+      onAdd([{
+        url: urlInput,
+        base64: imageData.base64,
+        mimeType: imageData.mimeType,
+        source: 'url'
       }]);
       setUrlInput('');
       onClose();
@@ -72,10 +72,10 @@ export const AddPhotoModal: React.FC<AddPhotoModalProps> = ({ isOpen, onClose, o
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
-        
+
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-100">
-          <h2 className="text-lg font-google font-medium text-gray-800">Add photos</h2>
+          <h2 className="text-lg font-google font-medium text-gray-800">Add moments</h2>
           <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full text-gray-500 transition-colors">
             <X size={20} />
           </button>
@@ -85,27 +85,24 @@ export const AddPhotoModal: React.FC<AddPhotoModalProps> = ({ isOpen, onClose, o
         <div className="flex px-4 pt-2 border-b border-gray-100">
           <button
             onClick={() => setActiveTab('upload')}
-            className={`pb-3 px-4 text-sm font-medium transition-colors relative ${
-              activeTab === 'upload' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'
-            }`}
+            className={`pb-3 px-4 text-sm font-medium transition-colors relative ${activeTab === 'upload' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'
+              }`}
           >
             Computer
             {activeTab === 'upload' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-t-full" />}
           </button>
           <button
             onClick={() => setActiveTab('google')}
-            className={`pb-3 px-4 text-sm font-medium transition-colors relative ${
-              activeTab === 'google' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'
-            }`}
+            className={`pb-3 px-4 text-sm font-medium transition-colors relative ${activeTab === 'google' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'
+              }`}
           >
             Google Photos
             {activeTab === 'google' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-t-full" />}
           </button>
           <button
             onClick={() => setActiveTab('url')}
-            className={`pb-3 px-4 text-sm font-medium transition-colors relative ${
-              activeTab === 'url' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'
-            }`}
+            className={`pb-3 px-4 text-sm font-medium transition-colors relative ${activeTab === 'url' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'
+              }`}
           >
             From Link
             {activeTab === 'url' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-t-full" />}
@@ -116,22 +113,22 @@ export const AddPhotoModal: React.FC<AddPhotoModalProps> = ({ isOpen, onClose, o
         <div className="p-6 overflow-y-auto">
           {error && (
             <div className="mb-4 p-3 bg-red-50 border border-red-100 rounded-lg text-red-600 text-sm flex items-center gap-2">
-               <span className="font-bold">!</span> {error}
+              <span className="font-bold">!</span> {error}
             </div>
           )}
 
           {activeTab === 'upload' && (
-            <div 
+            <div
               className="border-2 border-dashed border-gray-200 hover:border-blue-400 rounded-xl py-12 flex flex-col items-center justify-center cursor-pointer transition-colors bg-gray-50"
               onClick={() => fileInputRef.current?.click()}
             >
-              <input 
-                type="file" 
-                ref={fileInputRef} 
-                className="hidden" 
-                accept="image/*" 
-                multiple 
-                onChange={handleFileUpload} 
+              <input
+                type="file"
+                ref={fileInputRef}
+                className="hidden"
+                accept="image/*"
+                multiple
+                onChange={handleFileUpload}
               />
               {loading ? (
                 <Loader2 className="animate-spin text-blue-600 mb-3" size={32} />
@@ -150,7 +147,7 @@ export const AddPhotoModal: React.FC<AddPhotoModalProps> = ({ isOpen, onClose, o
               <div className="bg-yellow-50 p-4 rounded-xl border border-yellow-100 text-left">
                 <h3 className="font-medium text-yellow-800 text-sm mb-1">Import Instructions</h3>
                 <p className="text-yellow-700 text-xs leading-relaxed">
-                  Due to privacy security, you cannot directly browse your private cloud photos here. 
+                  Due to privacy security, you cannot directly browse your private cloud photos here.
                   However, you can easily drag and drop them from the Google Photos website.
                 </p>
               </div>
@@ -166,9 +163,9 @@ export const AddPhotoModal: React.FC<AddPhotoModalProps> = ({ isOpen, onClose, o
                 </div>
               </div>
 
-              <a 
-                href="https://photos.google.com" 
-                target="_blank" 
+              <a
+                href="https://photos.google.com"
+                target="_blank"
                 rel="noreferrer"
                 className="mt-2 w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20"
               >
@@ -183,8 +180,8 @@ export const AddPhotoModal: React.FC<AddPhotoModalProps> = ({ isOpen, onClose, o
                 <label className="block text-sm text-gray-600 mb-2 font-medium">Paste image address</label>
                 <div className="relative">
                   <LinkIcon className="absolute left-3 top-3 text-gray-400" size={18} />
-                  <input 
-                    type="url" 
+                  <input
+                    type="url"
                     value={urlInput}
                     onChange={(e) => setUrlInput(e.target.value)}
                     placeholder="https://..."
@@ -193,8 +190,8 @@ export const AddPhotoModal: React.FC<AddPhotoModalProps> = ({ isOpen, onClose, o
                   />
                 </div>
               </div>
-              <button 
-                type="submit" 
+              <button
+                type="submit"
                 disabled={loading || !urlInput.trim()}
                 className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
               >
