@@ -10,8 +10,6 @@ Story Matrix is a premium, high-performance photo gallery and storytelling platf
     -   Reorder Moments within a Story with intuitive handle-based dragging.
 -   **Advanced Text Overlays**:
     -   **Dynamic Typewriter Effect**: Captions appear word-by-word with smooth timing.
-    -   **⚡ Neon Sign Effect**: High-fidelity neon glow that matches your chosen font color, featuring **randomized flickering** across words for an organic, retro-sign feel.
-    -   **💧 Drip Effect**: Sharp text with animated semi-transparent droplets falling from the letters.
     -   **Customize Everything**: Choose from premium fonts (Anton, Lobster, Pacifico, etc.), adjust sizes, and pick from a curated color palette.
 -   **Smart Data Management**: 
     -   Automatic local storage persistence.
@@ -51,5 +49,3 @@ npm run deploy
 -   `index.html`: Contains the advanced CSS animation engine for text effects.
 -   `storage.ts`: Handles secure persistence of your stories and moments.
 
----
-Built with passion for storytelling.
