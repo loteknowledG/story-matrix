@@ -11,6 +11,10 @@ Story Matrix is a premium, high-performance photo gallery and storytelling platf
 -   **Advanced Text Overlays**:
     -   **Dynamic Typewriter Effect**: Captions appear word-by-word with smooth timing.
     -   **Customize Everything**: Choose from premium fonts (Anton, Lobster, Pacifico, etc.), adjust sizes, and pick from a curated color palette.
+-   **✨ Animated Stickers**: 
+    -   Add a library of fun stickers/emojis to any Moment.
+    -   Drag to reposition, pinch to scale, and rotate.
+    -   Apply animations like **Float**, **Pulse**, **Jiggle**, and **Spin** to bring them to life.
 -   **Smart Data Management**: 
     -   Automatic local storage persistence.
     -   Built-in **migration logic** to ensure backward compatibility with older "Album/Photo" data formats.

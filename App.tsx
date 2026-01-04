@@ -20,17 +20,22 @@ import {
   Menu,
   CheckSquare,
   FolderPlus,
-  ArrowLeft
+  ArrowLeft,
+  Smile,
+  Move
 } from 'lucide-react';
 
-import { Moment, MomentMetadata, Story } from './types';
+import { Moment, MomentMetadata, Story, Sticker, Choice } from './types';
 import { MomentCard } from './components/MomentCard';
 import { StoryCard } from './components/StoryCard';
+import { DialogueBox } from './components/DialogueBox';
+import { TypewriterText } from './components/TypewriterText';
 import { AddMomentModal } from './components/AddMomentModal';
 import { AddToStoryModal } from './components/AddToStoryModal';
-import { TypewriterText } from './components/TypewriterText';
+import { StickerDisplay } from './components/StickerDisplay';
 import { resizeImage } from './utils';
 import { saveState, loadState } from './storage';
+
 
 // Sample data
 const SAMPLE_MOMENTS: string[] = [
@@ -63,6 +68,12 @@ const COLORS = [
   '#8B5CF6', // Purple
   '#EC4899', // Pink
 ];
+
+const SAMPLE_STICKERS = [
+  '⭐', '💖', '🔥', '✨', '💧', '🎞️', '🌈', '🍦', '🏝️', '🎉', '🦋', '🎈', '🍕', '🚀', '🎸', '🕹️'
+];
+
+const STICKER_ANIMATIONS: Sticker['animation'][] = ['none', 'float', 'pulse', 'jiggle', 'spin', 'tween'];
 
 const App: React.FC = () => {
   const [moments, setMoments] = useState<Moment[]>([]);
@@ -99,8 +110,29 @@ const App: React.FC = () => {
   const [editingEffect, setEditingEffect] = useState<MomentMetadata['overlayEffect']>('none');
   const [editingWordEffects, setEditingWordEffects] = useState<MomentMetadata['overlayWordEffects']>([]);
   const [selectedWordIndex, setSelectedWordIndex] = useState<number | null>(null);
+  const [editingStickers, setEditingStickers] = useState<Sticker[]>([]);
+  const [selectedStickerId, setSelectedStickerId] = useState<string | null>(null);
+  const [isSettingTweenEnd, setIsSettingTweenEnd] = useState(false);
+  const [isStickerPickerOpen, setIsStickerPickerOpen] = useState(false);
+  const [editMode, setEditMode] = useState<'text' | 'stickers' | 'dialogue'>('text');
+
+  // Dialogue Edit State
+  const [isDialogueMode, setIsDialogueMode] = useState(false);
+  const [editingDialogueType, setEditingDialogueType] = useState<'speech' | 'narration'>('speech');
+  const [editingCharacterName, setEditingCharacterName] = useState('');
+  const [editingCharacterPortrait, setEditingCharacterPortrait] = useState('');
+  const [editingCharacterPosition, setEditingCharacterPosition] = useState<'left' | 'right'>('left');
+  const [editingChoices, setEditingChoices] = useState<Choice[]>([]);
+  const [stickerPickerOffset, setStickerPickerOffset] = useState({ x: 0, y: 0 });
+  const [stickerPropsOffset, setStickerPropsOffset] = useState({ x: 0, y: 0 });
+
+  useEffect(() => {
+    setIsSettingTweenEnd(false);
+  }, [selectedStickerId]);
 
   const [isDragging, setIsDragging] = useState(false);
+  const [draggedOverMomentId, setDraggedOverMomentId] = useState<string | null>(null);
+  const [draggedOverSide, setDraggedOverSide] = useState<'left' | 'right' | null>(null);
 
   const dragCounter = useRef(0);
   const draggedMomentIdRef = useRef<string | null>(null);
@@ -362,23 +394,40 @@ const App: React.FC = () => {
     setSelectedMomentIds(new Set());
   };
 
-  const handleReorder = (targetMoment: Moment) => {
+  const handleReorder = (targetMoment: Moment, side: 'left' | 'right') => {
     const draggedId = draggedMomentIdRef.current;
     if (!draggedId || !currentStory) return;
-    if (draggedId === targetMoment.id) return;
+    if (draggedId === targetMoment.id) {
+      setDraggedOverMomentId(null);
+      setDraggedOverSide(null);
+      return;
+    }
 
     const ids = [...currentStory.momentIds];
     const sourceIndex = ids.indexOf(draggedId);
-    const targetIndex = ids.indexOf(targetMoment.id);
+    let targetIndex = ids.indexOf(targetMoment.id);
 
     if (sourceIndex === -1 || targetIndex === -1) return;
 
+    // Remove from source
     ids.splice(sourceIndex, 1);
+
+    // Re-calculate target index after removal
+    targetIndex = ids.indexOf(targetMoment.id);
+
+    // If dropped on the right, increment target index
+    if (side === 'right') {
+      targetIndex += 1;
+    }
+
     ids.splice(targetIndex, 0, draggedId);
 
     const newStory = { ...currentStory, momentIds: ids };
     setCurrentStory(newStory);
     setStories(prev => prev.map(s => s.id === newStory.id ? newStory : s));
+
+    setDraggedOverMomentId(null);
+    setDraggedOverSide(null);
   };
 
   const updateMomentMetadata = (id: string) => {
@@ -395,7 +444,13 @@ const App: React.FC = () => {
             overlayFontFamily: editingFontFamily,
             overlayColor: editingColor,
             overlayEffect: editingEffect,
-            overlayWordEffects: editingWordEffects
+            overlayWordEffects: editingWordEffects,
+            stickers: editingStickers,
+            isDialogue: isDialogueMode,
+            characterName: editingCharacterName,
+            characterPortrait: editingCharacterPortrait,
+            characterPosition: editingCharacterPosition,
+            choices: editingChoices
           }
         };
       }
@@ -411,7 +466,19 @@ const App: React.FC = () => {
     setEditingColor(moment.metadata?.overlayColor || '#FFFFFF');
     setEditingEffect(moment.metadata?.overlayEffect || 'none');
     setEditingWordEffects(moment.metadata?.overlayWordEffects || []);
-    setIsEditingText(false);
+    setEditingStickers(moment.metadata?.stickers || []);
+
+    // Dialogue
+    setIsDialogueMode(!!moment.metadata?.isDialogue);
+    setEditingDialogueType(moment.metadata?.dialogueType || 'speech');
+    setEditingCharacterName(moment.metadata?.characterName || '');
+    setEditingCharacterPortrait(moment.metadata?.characterPortrait || '');
+    setEditingCharacterPosition(moment.metadata?.characterPosition || 'left');
+    setEditingChoices(moment.metadata?.choices || []);
+
+    setIsEditingText(true);
+    setEditMode('text');
+    setIsStickerPickerOpen(false);
     setSelectedWordIndex(null);
   };
 
@@ -429,12 +496,109 @@ const App: React.FC = () => {
           overlayFontFamily: editingFontFamily,
           overlayColor: editingColor,
           overlayEffect: editingEffect,
-          overlayWordEffects: editingWordEffects
+          overlayWordEffects: editingWordEffects,
+          stickers: editingStickers,
+          isDialogue: isDialogueMode,
+          dialogueType: editingDialogueType,
+          characterName: editingCharacterName,
+          characterPortrait: editingCharacterPortrait,
+          characterPosition: editingCharacterPosition,
+          choices: editingChoices
         }
       } : null);
       setIsEditingText(false);
+      setIsStickerPickerOpen(false);
       setSelectedWordIndex(null);
+      setSelectedStickerId(null);
     }
+  };
+
+  const cancelEdit = () => {
+    if (!selectedMoment) return;
+    setEditingTextValue(selectedMoment.metadata?.overlayText || '');
+    setEditingFontSize(selectedMoment.metadata?.overlayFontSize || 40);
+    setEditingFontFamily(selectedMoment.metadata?.overlayFontFamily || 'Anton');
+    setEditingColor(selectedMoment.metadata?.overlayColor || '#FFFFFF');
+    setEditingEffect(selectedMoment.metadata?.overlayEffect || 'none');
+    setEditingWordEffects(selectedMoment.metadata?.overlayWordEffects || []);
+    setEditingStickers(selectedMoment.metadata?.stickers || []);
+    setIsDialogueMode(!!selectedMoment.metadata?.isDialogue);
+    setEditingDialogueType(selectedMoment.metadata?.dialogueType || 'speech');
+    setEditingCharacterName(selectedMoment.metadata?.characterName || '');
+    setEditingCharacterPortrait(selectedMoment.metadata?.characterPortrait || '');
+    setEditingCharacterPosition(selectedMoment.metadata?.characterPosition || 'left');
+    setEditingChoices(selectedMoment.metadata?.choices || []);
+    setIsEditingText(false);
+    setIsStickerPickerOpen(false);
+    setSelectedWordIndex(null);
+    setSelectedStickerId(null);
+  };
+
+  const addSticker = (content: string) => {
+    const newSticker: Sticker = {
+      id: `sticker-${Date.now()}`,
+      content,
+      x: 50,
+      y: 50,
+      scale: 1,
+      scaleX: 1,
+      scaleY: 1,
+      rotation: 0,
+      animation: 'none'
+    };
+    setEditingStickers(prev => [...prev, newSticker]);
+  };
+
+  const handleStickerPickerDrag = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const initialX = stickerPickerOffset.x;
+    const initialY = stickerPickerOffset.y;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      setStickerPickerOffset({
+        x: initialX + (moveEvent.clientX - startX),
+        y: initialY + (moveEvent.clientY - startY)
+      });
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
+
+  const handleStickerPropsDrag = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const initialX = stickerPropsOffset.x;
+    const initialY = stickerPropsOffset.y;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      setStickerPropsOffset({
+        x: initialX + (moveEvent.clientX - startX),
+        y: initialY + (moveEvent.clientY - startY)
+      });
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
+
+  const updateSticker = (id: string, updates: Partial<Sticker>) => {
+    setEditingStickers(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
   };
 
   // When text changes, adjust word effects array size to match
@@ -712,7 +876,7 @@ const App: React.FC = () => {
           <div className="flex items-center justify-between mb-6 h-10">
             {view === 'timeline' && (
               <>
-                <h2 className="text-gray-800 font-medium text-lg">Timeline</h2>
+                <h2 className="text-gray-800 font-medium text-lg">Moments</h2>
                 <div className="flex gap-2">
                   <button
                     onClick={() => setIsSelectionMode(!isSelectionMode)}
@@ -791,7 +955,7 @@ const App: React.FC = () => {
                     <ImageIcon size={48} className="text-gray-300" />
                   </div>
                   <p className="text-gray-500 text-lg">
-                    {view === 'story_detail' ? 'This story is empty' : 'Your gallery is empty'}
+                    {view === 'story_detail' ? 'This story is empty' : 'Your Moments are empty'}
                   </p>
                   {view === 'timeline' && <p className="text-gray-400 text-sm">Drag and drop photos here from your computer or Google Photos</p>}
                 </div>
@@ -813,7 +977,24 @@ const App: React.FC = () => {
                         e.dataTransfer.setData('application/x-story-matrix-moment', m.id);
                         draggedMomentIdRef.current = m.id;
                       }}
-                      onReorder={handleReorder}
+                      onDragOverCard={(e, m) => {
+                        if (draggedMomentIdRef.current === m.id) return;
+                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                        const x = e.clientX - rect.left;
+                        const side = x < rect.width / 2 ? 'left' : 'right';
+                        setDraggedOverMomentId(m.id);
+                        setDraggedOverSide(side);
+                      }}
+                      onDragLeaveCard={() => {
+                        setDraggedOverMomentId(null);
+                        setDraggedOverSide(null);
+                      }}
+                      dropIndicator={draggedOverMomentId === moment.id ? draggedOverSide : null}
+                      onReorder={(m) => {
+                        if (draggedOverSide) {
+                          handleReorder(m, draggedOverSide);
+                        }
+                      }}
                     />
                   ))}
                 </div>
@@ -845,53 +1026,100 @@ const App: React.FC = () => {
 
       {/* Story Mode Overlay */}
       {isStoryMode && currentStoryMoment && (
-        <div className="fixed inset-0 z-[60] bg-black flex flex-col animate-in fade-in duration-300">
-          <div className="absolute top-0 right-0 p-6 z-50">
+        <div className="fixed inset-0 z-[60] bg-black animate-in fade-in duration-300">
+          {/* Background Blurred Image */}
+          <div
+            className="absolute inset-0 z-0 opacity-40 blur-2xl scale-110"
+            style={{
+              backgroundImage: `url(${currentStoryMoment.url})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center'
+            }}
+          />
+
+          {/* Top Bar (Overlay) */}
+          <div className="absolute top-0 left-0 right-0 h-20 flex items-center justify-between px-6 z-50 bg-gradient-to-b from-black/80 to-transparent pointer-events-none">
+            <div className="flex flex-col pointer-events-auto">
+              <h2 className="text-white font-black text-xl tracking-tight leading-none">
+                {currentStory?.title || 'Story Mode'}
+              </h2>
+              <span className="text-white/50 text-[10px] uppercase font-bold tracking-[0.2em] mt-1">
+                {storyIndex + 1} / {storyMoments.length}
+              </span>
+            </div>
             <button
               onClick={() => setIsStoryMode(false)}
-              className="p-3 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
+              className="p-3 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors backdrop-blur-md pointer-events-auto"
             >
               <X size={24} />
             </button>
           </div>
 
-          <div className="flex-1 flex items-center justify-between relative px-4 md:px-12 w-full h-full">
+          {/* Main Content (Full Screen) */}
+          <div className="absolute inset-0 flex items-center justify-between px-4 md:px-12 w-full h-full z-10">
             {/* Previous Button */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 setStoryIndex(i => (i - 1 + storyMoments.length) % storyMoments.length);
               }}
-              className="absolute left-2 md:static z-20 p-2 md:p-4 rounded-full bg-black/30 md:bg-white/5 hover:bg-white/20 text-white transition-all md:hover:scale-110 backdrop-blur-sm md:backdrop-blur-none"
+              className="z-40 p-4 rounded-full bg-black/30 hover:bg-white/10 text-white transition-all hover:scale-110 backdrop-blur-sm"
             >
               <ChevronLeft size={32} className="md:w-12 md:h-12" />
             </button>
 
-            {/* Main Content */}
-            <div className="flex-1 flex items-center justify-center h-full relative p-4">
-              <div className="relative max-h-full max-w-full">
-                <img
-                  src={currentStoryMoment.url}
-                  className="max-h-[85vh] max-w-full object-contain shadow-2xl rounded-lg"
-                  alt="Story item"
-                />
-                {/* Overlay for Story Mode */}
-                {currentStoryMoment.metadata?.overlayText && (
-                  <div className="absolute inset-0 flex items-end justify-center p-8 pointer-events-none">
-                    <TypewriterText
-                      text={currentStoryMoment.metadata.overlayText}
-                      wordEffects={currentStoryMoment.metadata.overlayWordEffects}
+            {/* Image Display */}
+            <div className="flex-1 flex items-center justify-center h-full relative overflow-hidden mx-4">
+              <div className="relative w-full h-full flex items-center justify-center">
+                <div className="relative h-screen w-full flex items-center justify-center group">
+                  <img
+                    src={currentStoryMoment.url}
+                    className="h-screen w-full object-contain shadow-2xl transition-transform duration-700 group-hover:scale-[1.01]"
+                    alt="Story item"
+                  />
+                  {/* Stickers for Story Mode */}
+                  {currentStoryMoment.metadata?.stickers && (
+                    <StickerDisplay stickers={currentStoryMoment.metadata.stickers} />
+                  )}
+                  {/* Dialogue System in Story Mode */}
+                  {currentStoryMoment.metadata?.isDialogue ? (
+                    <DialogueBox
+                      name={currentStoryMoment.metadata.characterName}
+                      text={currentStoryMoment.metadata.overlayText || ""}
+                      portrait={currentStoryMoment.metadata.characterPortrait}
+                      position={currentStoryMoment.metadata.characterPosition}
+                      dialogueType={currentStoryMoment.metadata.dialogueType}
+                      fontSize={currentStoryMoment.metadata.overlayFontSize}
+                      fontFamily={currentStoryMoment.metadata.overlayFontFamily}
+                      color={currentStoryMoment.metadata.overlayColor}
                       globalEffect={currentStoryMoment.metadata.overlayEffect}
-                      className="font-black text-center leading-tight tracking-wide break-words w-full"
-                      style={{
-                        fontSize: (currentStoryMoment.metadata.overlayFontSize || 40) + 'px',
-                        fontFamily: currentStoryMoment.metadata.overlayFontFamily || 'Anton',
-                        color: currentStoryMoment.metadata.overlayColor || '#FFFFFF',
-                        textShadow: '3px 3px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000',
+                      wordEffects={currentStoryMoment.metadata.overlayWordEffects}
+                      choices={currentStoryMoment.metadata.choices}
+                      onChoiceSelect={(targetId) => {
+                        const index = storyMoments.findIndex(m => m.id === targetId);
+                        if (index !== -1) setStoryIndex(index);
                       }}
                     />
-                  </div>
-                )}
+                  ) : (
+                    /* Floating Overlay for Story Mode */
+                    currentStoryMoment.metadata?.overlayText && (
+                      <div className="absolute inset-0 flex items-end justify-center p-8 pointer-events-none">
+                        <TypewriterText
+                          text={currentStoryMoment.metadata.overlayText}
+                          wordEffects={currentStoryMoment.metadata.overlayWordEffects}
+                          globalEffect={currentStoryMoment.metadata.overlayEffect}
+                          className="font-black text-center leading-tight tracking-wide break-words w-full"
+                          style={{
+                            fontSize: `calc(1vw + ${currentStoryMoment.metadata.overlayFontSize || 40}px)`,
+                            fontFamily: currentStoryMoment.metadata.overlayFontFamily || 'Anton',
+                            color: currentStoryMoment.metadata.overlayColor || '#FFFFFF',
+                            textShadow: '3px 3px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000',
+                          }}
+                        />
+                      </div>
+                    )
+                  )}
+                </div>
               </div>
             </div>
 
@@ -901,21 +1129,12 @@ const App: React.FC = () => {
                 e.stopPropagation();
                 setStoryIndex(i => (i + 1) % storyMoments.length);
               }}
-              className="absolute right-2 md:static z-20 p-2 md:p-4 rounded-full bg-black/30 md:bg-white/5 hover:bg-white/20 text-white transition-all md:hover:scale-110 backdrop-blur-sm md:backdrop-blur-none"
+              className="z-40 p-4 rounded-full bg-black/30 hover:bg-white/10 text-white transition-all hover:scale-110 backdrop-blur-sm"
             >
               <ChevronRight size={32} className="md:w-12 md:h-12" />
             </button>
           </div>
 
-          {/* Footer Info */}
-          <div className="h-16 flex flex-col items-center justify-center text-white/50 bg-gradient-to-t from-black/80 to-transparent">
-            <div className="text-sm font-medium tracking-widest uppercase mb-1">
-              Story Mode: {currentStory?.title || 'Story'}
-            </div>
-            <div className="text-xs">
-              {storyIndex + 1} of {storyMoments.length}
-            </div>
-          </div>
         </div>
       )}
 
@@ -937,23 +1156,81 @@ const App: React.FC = () => {
             <button onClick={() => setSelectedMoment(null)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
               <X size={24} />
             </button>
+
+            {isEditingText && editMode === 'stickers' && !selectedStickerId && (
+              <div className="absolute left-1/2 -translate-x-1/2 text-blue-200 text-xs font-medium bg-blue-600/20 px-4 py-1.5 rounded-full border border-blue-400/30 backdrop-blur-sm animate-in fade-in slide-in-from-top-4">
+                Select a sticker on the image to adjust its properties.
+              </div>
+            )}
+
             <div className="flex gap-2">
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (isEditingText) {
+                  if (isEditingText && editMode === 'text') {
                     saveText();
                   } else {
                     setIsEditingText(true);
+                    setEditMode('text');
+                    setIsDialogueMode(false);
                   }
                 }}
-                className={`flex items-center gap-2 px-4 py-2 rounded-full font-medium transition-colors ${isEditingText
+                className={`flex items-center gap-2 px-4 py-2 rounded-full font-medium transition-colors ${isEditingText && editMode === 'text'
                   ? 'bg-blue-600 hover:bg-blue-700 text-white'
                   : 'bg-white/10 hover:bg-white/20 text-white'
                   }`}
               >
-                {isEditingText ? <Check size={18} /> : <TypeIcon size={18} />}
-                {isEditingText ? 'Save Text' : 'Edit Text'}
+                {isEditingText && editMode === 'text' ? <Check size={18} /> : <TypeIcon size={18} />}
+                {isEditingText && editMode === 'text' ? 'Save Changes' : 'Edit Text'}
+              </button>
+
+              {isEditingText && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    cancelEdit();
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-full font-medium transition-colors border border-red-500/30"
+                >
+                  <X size={18} />
+                  Discard
+                </button>
+              )}
+
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditMode('stickers');
+                  setIsStickerPickerOpen(!isStickerPickerOpen);
+                  setIsEditingText(true);
+                }}
+                className={`flex items-center gap-2 px-4 py-2 rounded-full font-medium transition-colors ${isStickerPickerOpen || (isEditingText && editMode === 'stickers')
+                  ? 'bg-yellow-600 text-white'
+                  : 'bg-white/10 hover:bg-white/20 text-white'
+                  }`}
+              >
+                <Smile size={18} />
+                Stickers
+              </button>
+
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (isEditingText && editMode === 'dialogue') {
+                    saveText();
+                  } else {
+                    setEditMode('dialogue');
+                    setIsEditingText(true);
+                    setIsDialogueMode(true);
+                  }
+                }}
+                className={`flex items-center gap-2 px-4 py-2 rounded-full font-medium transition-colors ${isEditingText && editMode === 'dialogue'
+                  ? 'bg-purple-600 hover:bg-purple-700 text-white'
+                  : 'bg-white/10 hover:bg-white/20 text-white'
+                  }`}
+              >
+                <BookOpen size={18} />
+                {isEditingText && editMode === 'dialogue' ? 'Save Changes' : 'Cinematic Box'}
               </button>
 
               <button
@@ -968,147 +1245,473 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex-1 flex items-center justify-center p-4 w-full h-full relative">
+          <div className="flex-1 flex items-center justify-center w-full h-full relative overflow-hidden">
+            {/* Blurred background to fill screen */}
             <div
-              className="relative max-h-full max-w-full"
+              className="absolute inset-0 z-0 opacity-30 blur-3xl scale-125"
+              style={{
+                backgroundImage: `url(${selectedMoment.url})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center'
+              }}
+            />
+
+            <div
+              className="relative z-10 w-full h-full flex items-center justify-center p-4"
               onClick={(e) => e.stopPropagation()}
             >
-              <img
-                src={selectedMoment.url}
-                className="max-h-[90vh] max-w-full object-contain shadow-2xl"
-              />
+              <div className="relative max-h-full max-w-full">
+                <img
+                  src={selectedMoment.url}
+                  className="h-screen w-full object-contain shadow-[0_0_50px_rgba(0,0,0,0.5)] rounded-sm"
+                  alt="Full view"
+                />
 
-              {/* Overlay Text Display (Lightbox) */}
-              {!isEditingText && selectedMoment.metadata?.overlayText && (
-                <div className="absolute inset-0 flex items-end justify-center p-8 pointer-events-none">
-                  <p
-                    className={`font-black text-center leading-tight tracking-wide break-words w-full`}
+                {/* Stickers Display (Lightbox) */}
+                <StickerDisplay
+                  stickers={isEditingText ? editingStickers : (selectedMoment.metadata?.stickers || [])}
+                  isEditing={isEditingText}
+                  selectedId={selectedStickerId}
+                  onSelect={setSelectedStickerId}
+                  onStickerUpdate={(updated) => setEditingStickers(updated)}
+                  isDraggingEnd={isSettingTweenEnd}
+                />
+
+                {/* Dialogue System in Lightbox */}
+                {isDialogueMode ? (
+                  <DialogueBox
+                    name={editingCharacterName}
+                    text={editingTextValue}
+                    portrait={editingCharacterPortrait}
+                    position={editingCharacterPosition}
+                    isEditing={true}
+                    dialogueType={editingDialogueType}
+                    fontSize={editingFontSize}
+                    fontFamily={editingFontFamily}
+                    color={editingColor}
+                    globalEffect={editingEffect}
+                    wordEffects={editingWordEffects}
+                  />
+                ) : (
+                  /* Floating Overlay Text Display (Lightbox) */
+                  ((!isEditingText && selectedMoment.metadata?.overlayText) || (isEditingText && editMode === 'stickers' && editingTextValue)) && (
+                    <div className="absolute inset-0 flex items-end justify-center p-8 pointer-events-none">
+                      <p
+                        className="font-black text-center leading-tight tracking-wide break-words w-full"
+                        style={{
+                          fontSize: (isEditingText ? editingFontSize : (selectedMoment.metadata?.overlayFontSize || 40)) + 'px',
+                          fontFamily: isEditingText ? editingFontFamily : (selectedMoment.metadata?.overlayFontFamily || 'Anton'),
+                          color: isEditingText ? editingColor : (selectedMoment.metadata?.overlayColor || '#FFFFFF')
+                        }}
+                      >
+                        {(isEditingText ? editingTextValue : selectedMoment.metadata!.overlayText!).split(' ').map((word, index) => {
+                          const effect = isEditingText
+                            ? (editingWordEffects?.[index] || editingEffect)
+                            : (selectedMoment.metadata?.overlayWordEffects?.[index] || selectedMoment.metadata?.overlayEffect);
+                          return (
+                            <span
+                              key={index}
+                              className={effect && effect !== 'none' ? `effect-${effect}` : ''}
+                              style={{
+                                textShadow: effect && effect !== 'none'
+                                  ? undefined
+                                  : '3px 3px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000',
+                                '--text-color': isEditingText ? editingColor : (selectedMoment.metadata?.overlayColor || '#FFFFFF'),
+                                '--neon-duration': effect === 'neon' ? `${2 + (index % 3)}s` : undefined,
+                                '--neon-delay': effect === 'neon' ? `${(index % 5) * -0.7}s` : undefined,
+                              } as React.CSSProperties}
+                            >
+                              {word}{' '}
+                            </span>
+                          );
+                        })}
+                      </p>
+                    </div>
+                  )
+                )}
+
+                {/* Sticker Picker Popup */}
+                {isStickerPickerOpen && (
+                  <div
+                    className="absolute top-2 left-1/2 -translate-x-1/2 bg-black/90 backdrop-blur-xl border border-white/20 p-4 rounded-2xl shadow-2xl flex flex-col gap-4 animate-in zoom-in-95 pointer-events-auto w-64 z-50"
+                    onClick={(e) => e.stopPropagation()}
                     style={{
-                      fontSize: (selectedMoment.metadata.overlayFontSize || 40) + 'px',
-                      fontFamily: selectedMoment.metadata.overlayFontFamily || 'Anton',
-                      color: selectedMoment.metadata.overlayColor || '#FFFFFF'
+                      transform: `translate(calc(-50% + ${stickerPickerOffset.x}px), ${stickerPickerOffset.y}px)`
                     }}
                   >
-                    {selectedMoment.metadata.overlayText.split(' ').map((word, index) => {
-                      const effect = selectedMoment.metadata?.overlayWordEffects?.[index] || selectedMoment.metadata?.overlayEffect;
-                      return (
-                        <span
-                          key={index}
-                          className={effect && effect !== 'none' ? `effect-${effect}` : ''}
-                          style={{
-                            textShadow: effect && effect !== 'none'
-                              ? undefined
-                              : '3px 3px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000',
-                            '--text-color': selectedMoment.metadata?.overlayColor || '#FFFFFF',
-                            '--neon-duration': effect === 'neon' ? `${2 + (index % 3)}s` : undefined,
-                            '--neon-delay': effect === 'neon' ? `${(index % 5) * -0.7}s` : undefined,
-                          } as React.CSSProperties}
+                    <div className="flex justify-between items-center px-1 cursor-move" onMouseDown={handleStickerPickerDrag}>
+                      <span className="text-white text-xs font-bold uppercase tracking-wider opacity-50">Pick a Sticker</span>
+                      <button onClick={() => setIsStickerPickerOpen(false)} className="text-white/50 hover:text-white">
+                        <X size={14} />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-4 gap-2">
+                      {SAMPLE_STICKERS.map(emoji => (
+                        <button
+                          key={emoji}
+                          onClick={() => addSticker(emoji)}
+                          className="text-2xl p-2 hover:bg-white/10 rounded-xl transition-all hover:scale-125"
                         >
-                          {word}{' '}
-                        </span>
-                      );
-                    })}
-                  </p>
-                </div>
-              )}
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-              {/* Edit Mode Controls */}
-              {isEditingText && (
-                <div className="absolute inset-0 flex flex-col justify-end">
-                  {/* Toolbar */}
+                {/* Sticker Properties Dialog */}
+                {isEditingText && editMode === 'stickers' && selectedStickerId && (
                   <div
-                    className="bg-black/80 backdrop-blur-md p-4 flex flex-col gap-4 animate-in slide-in-from-bottom-10"
+                    className="absolute top-2 left-1/2 -translate-x-1/2 bg-black/90 backdrop-blur-xl border border-blue-500/30 p-4 rounded-2xl shadow-2xl flex flex-col gap-4 animate-in zoom-in-95 pointer-events-auto w-72 z-50"
                     onClick={(e) => e.stopPropagation()}
+                    style={{
+                      transform: `translate(calc(-50% + ${stickerPropsOffset.x}px), ${stickerPropsOffset.y}px)`
+                    }}
                   >
-                    {/* Row 0: Word Selector */}
-                    {editingTextValue.trim() && (
-                      <div className="flex flex-wrap justify-center gap-2 max-w-2xl mx-auto py-2">
-                        <span className="text-white/50 text-xs w-full text-center mb-1">Tap words to apply effects:</span>
-                        {editingTextValue.split(' ').map((word, index) => {
-                          const active = selectedWordIndex === index;
-                          const hasEffect = editingWordEffects?.[index] && editingWordEffects[index] !== 'none';
+                    <div className="flex justify-between items-center px-1">
+                      <div className="flex items-center gap-2 text-blue-400 cursor-move" onMouseDown={handleStickerPropsDrag}>
+                        <Move size={16} className="animate-pulse" />
+                        <span className="text-[10px] uppercase font-bold text-blue-300 tracking-wider">Move Dialog</span>
+                      </div>
+                      <button onClick={() => setSelectedStickerId(null)} className="bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors shadow-lg">
+                        <X size={14} />
+                      </button>
+                    </div>
 
+                    <div className="flex flex-col gap-4">
+                      <div className="flex items-center gap-4">
+                        <span className="text-[10px] uppercase font-bold text-blue-300 w-16">Size</span>
+                        <input
+                          type="range"
+                          min="0.1"
+                          max="5"
+                          step="0.1"
+                          value={editingStickers.find(s => s.id === selectedStickerId)?.scale || 1}
+                          onChange={(e) => updateSticker(selectedStickerId!, { scale: Number(e.target.value) })}
+                          className="flex-1 h-1.5 bg-blue-900 rounded-lg appearance-none cursor-pointer accent-blue-400"
+                        />
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <span className="text-[10px] uppercase font-bold text-blue-300 w-16">Width</span>
+                        <input
+                          type="range"
+                          min="0.1"
+                          max="5"
+                          step="0.1"
+                          value={editingStickers.find(s => s.id === selectedStickerId)?.scaleX || 1}
+                          onChange={(e) => updateSticker(selectedStickerId!, { scaleX: Number(e.target.value) })}
+                          className="flex-1 h-1.5 bg-blue-900 rounded-lg appearance-none cursor-pointer accent-blue-400"
+                        />
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <span className="text-[10px] uppercase font-bold text-blue-300 w-16">Height</span>
+                        <input
+                          type="range"
+                          min="0.1"
+                          max="5"
+                          step="0.1"
+                          value={editingStickers.find(s => s.id === selectedStickerId)?.scaleY || 1}
+                          onChange={(e) => updateSticker(selectedStickerId!, { scaleY: Number(e.target.value) })}
+                          className="flex-1 h-1.5 bg-blue-900 rounded-lg appearance-none cursor-pointer accent-blue-400"
+                        />
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <span className="text-[10px] uppercase font-bold text-blue-300 w-16">Rotation</span>
+                        <input
+                          type="range"
+                          min="-180"
+                          max="180"
+                          value={editingStickers.find(s => s.id === selectedStickerId)?.rotation || 0}
+                          onChange={(e) => updateSticker(selectedStickerId!, { rotation: Number(e.target.value) })}
+                          className="flex-1 h-1.5 bg-blue-900 rounded-lg appearance-none cursor-pointer accent-blue-400"
+                        />
+                      </div>
+                      <div className="flex flex-wrap items-center justify-center gap-1.5 bg-black/40 p-1.5 rounded-xl border border-white/5">
+                        {STICKER_ANIMATIONS.map(anim => {
+                          const currentAnim = editingStickers.find(s => s.id === selectedStickerId)?.animation;
                           return (
                             <button
-                              key={index}
-                              onClick={() => setSelectedWordIndex(active ? null : index)}
-                              className={`
-                                    px-3 py-1 rounded-full text-sm font-medium transition-all border
-                                    ${active
-                                  ? 'bg-blue-600 border-blue-400 text-white scale-110 shadow-lg ring-2 ring-blue-300/50'
-                                  : 'bg-white/10 border-white/20 text-white hover:bg-white/20'}
-                                    ${hasEffect && !active ? 'border-green-400/50 text-green-100' : ''}
-                                  `}
+                              key={anim}
+                              onClick={() => {
+                                updateSticker(selectedStickerId!, { animation: anim });
+                                if (anim === 'tween') {
+                                  const s = editingStickers.find(st => st.id === selectedStickerId);
+                                  if (s && s.endX === undefined) {
+                                    updateSticker(selectedStickerId!, { endX: s.x, endY: s.y, tweenDuration: 2 });
+                                  }
+                                } else {
+                                  setIsSettingTweenEnd(false);
+                                }
+                              }}
+                              className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase transition-all ${currentAnim === anim ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
                             >
-                              {word}
-                              {hasEffect && <span className="ml-1 text-[10px] text-green-400">★</span>}
+                              {anim}
                             </button>
                           );
                         })}
                       </div>
-                    )}
 
-                    {/* Row 1: Font & Size */}
+                      {editingStickers.find(s => s.id === selectedStickerId)?.animation === 'tween' && (
+                        <div className="flex flex-col gap-3 p-3 bg-blue-600/10 rounded-xl border border-blue-500/20 animate-in fade-in zoom-in-95">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-blue-300 uppercase">Motion Path</span>
+                            <button
+                              onClick={() => setIsSettingTweenEnd(!isSettingTweenEnd)}
+                              className={`px-3 py-1 rounded-full text-[10px] font-bold transition-all ${isSettingTweenEnd ? 'bg-yellow-500 text-black shadow-lg' : 'bg-white/10 text-white'}`}
+                            >
+                              {isSettingTweenEnd ? 'DRAGGING END' : 'EDIT END POSITION'}
+                            </button>
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <span className="text-[10px] uppercase font-bold text-blue-300 w-16">Duration</span>
+                            <input
+                              type="range"
+                              min="0.2"
+                              max="10"
+                              step="0.1"
+                              value={editingStickers.find(s => s.id === selectedStickerId)?.tweenDuration || 2}
+                              onChange={(e) => updateSticker(selectedStickerId!, { tweenDuration: Number(e.target.value) })}
+                              className="flex-1 h-1.5 bg-blue-900 rounded-lg appearance-none cursor-pointer accent-blue-400"
+                            />
+                            <span className="text-white text-[10px] w-6">{editingStickers.find(s => s.id === selectedStickerId)?.tweenDuration || 2}s</span>
+                          </div>
+                          <p className="text-[9px] text-blue-300/60 leading-tight">
+                            {isSettingTweenEnd
+                              ? "Drag the sticker to set where it lands. A dashed line shows the path."
+                              : "Sticker will move from its base position to the end position."}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Edit Mode Toolbar (Bottom) */}
+            {isEditingText && (
+              <div className="absolute inset-x-0 bottom-0 z-40 p-4 pointer-events-none">
+                <div className="bg-black/80 backdrop-blur-md p-4 flex flex-col gap-4 animate-in slide-in-from-bottom-10 pointer-events-auto rounded-xl border border-white/10" onClick={(e) => e.stopPropagation()}>
+                  {/* Row -1: Dialogue Controls */}
+                  {editMode === 'dialogue' && (
+                    <div className="flex flex-col gap-4 max-w-2xl mx-auto w-full animate-in fade-in zoom-in-95 py-2">
+                      {/* Style Selector */}
+                      <div className="flex items-center justify-center gap-2 mb-1">
+                        <button
+                          onClick={() => setEditingDialogueType('speech')}
+                          className={`flex items-center gap-2 px-4 py-1.5 rounded-xl text-xs font-bold transition-all ${editingDialogueType === 'speech' ? 'bg-purple-600 text-white shadow-lg scale-105' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}
+                        >
+                          <Smile size={14} />
+                          Character Speech
+                        </button>
+                        <button
+                          onClick={() => setEditingDialogueType('narration')}
+                          className={`flex items-center gap-2 px-4 py-1.5 rounded-xl text-xs font-bold transition-all ${editingDialogueType === 'narration' ? 'bg-purple-600 text-white shadow-lg scale-105' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}
+                        >
+                          <BookOpen size={14} />
+                          Narrative Text
+                        </button>
+                      </div>
+
+                      {editingDialogueType === 'speech' && (
+                        <div className="flex flex-col md:flex-row gap-4 animate-in slide-in-from-top-2">
+                          <div className="flex-1 flex flex-col gap-1.5">
+                            <label className="text-[10px] uppercase font-bold text-purple-300 ml-1">Character Name</label>
+                            <input
+                              type="text"
+                              value={editingCharacterName}
+                              onChange={(e) => setEditingCharacterName(e.target.value)}
+                              placeholder="Enter character name..."
+                              className="bg-white/10 border border-white/20 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-purple-500 transition-all font-sans text-sm"
+                            />
+                          </div>
+                          <div className="flex-1 flex flex-col gap-1.5">
+                            <label className="text-[10px] uppercase font-bold text-purple-300 ml-1">Portrait URL</label>
+                            <input
+                              type="text"
+                              value={editingCharacterPortrait}
+                              onChange={(e) => setEditingCharacterPortrait(e.target.value)}
+                              placeholder="Paste portrait image URL..."
+                              className="bg-white/10 border border-white/20 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-purple-500 transition-all font-sans text-sm"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-4 px-1 justify-between">
+                        <div className="flex items-center gap-3">
+                          {editingDialogueType === 'speech' && (
+                            <div className="flex items-center gap-3 animate-in fade-in">
+                              <span className="text-[10px] uppercase font-bold text-purple-300">Position</span>
+                              <div className="flex bg-white/5 p-1 rounded-lg border border-white/10">
+                                <button
+                                  onClick={() => setEditingCharacterPosition('left')}
+                                  className={`px-4 py-1 rounded-md text-[10px] font-bold transition-all ${editingCharacterPosition === 'left' ? 'bg-purple-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
+                                >
+                                  LEFT
+                                </button>
+                                <button
+                                  onClick={() => setEditingCharacterPosition('right')}
+                                  className={`px-4 py-1 rounded-md text-[10px] font-bold transition-all ${editingCharacterPosition === 'right' ? 'bg-purple-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
+                                >
+                                  RIGHT
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => {
+                            setIsDialogueMode(false);
+                            setEditMode('text');
+                          }}
+                          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all bg-white/10 text-white border border-white/5 hover:bg-red-500/20 hover:border-red-500/30 hover:text-red-300`}
+                        >
+                          <Zap size={14} />
+                          Switch to Floating Text
+                        </button>
+                      </div>
+
+                      {/* Narrative Choices Editor */}
+                      <div className="mt-2 bg-white/5 rounded-2xl border border-white/10 p-4">
+                        <div className="flex items-center justify-between mb-3 px-1">
+                          <h4 className="text-[10px] uppercase font-bold text-purple-300 tracking-widest flex items-center gap-2">
+                            <Plus size={12} />
+                            Narrative Choices
+                          </h4>
+                          <button
+                            onClick={() => {
+                              const newChoice: Choice = {
+                                id: `choice-${Date.now()}`,
+                                label: 'New Choice',
+                                targetMomentId: ''
+                              };
+                              setEditingChoices([...editingChoices, newChoice]);
+                            }}
+                            className="text-[9px] font-black uppercase tracking-tighter bg-purple-600/50 hover:bg-purple-600 text-white px-3 py-1 rounded-full transition-all"
+                          >
+                            Add Choice
+                          </button>
+                        </div>
+
+                        <div className="flex flex-col gap-3">
+                          {editingChoices.length === 0 ? (
+                            <p className="text-[10px] text-white/30 italic text-center py-2">No choices added. This moment will proceed sequentially.</p>
+                          ) : (
+                            editingChoices.map((choice, idx) => (
+                              <div key={choice.id} className="flex gap-2 items-center bg-black/40 p-2 rounded-xl border border-white/5 animate-in slide-in-from-left-2 transition-all">
+                                <div className="flex-1 flex flex-col gap-1">
+                                  <label className="text-[8px] uppercase font-bold text-white/30 ml-1">Button Label</label>
+                                  <input
+                                    type="text"
+                                    value={choice.label}
+                                    onChange={(e) => {
+                                      const next = [...editingChoices];
+                                      next[idx] = { ...choice, label: e.target.value };
+                                      setEditingChoices(next);
+                                    }}
+                                    placeholder="e.g. Follow him..."
+                                    className="bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500/50"
+                                  />
+                                </div>
+                                <div className="flex-1 flex flex-col gap-1">
+                                  <label className="text-[8px] uppercase font-bold text-white/30 ml-1">Target Moment</label>
+                                  <select
+                                    value={choice.targetMomentId}
+                                    onChange={(e) => {
+                                      const next = [...editingChoices];
+                                      next[idx] = { ...choice, targetMomentId: e.target.value };
+                                      setEditingChoices(next);
+                                    }}
+                                    className="bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500/50"
+                                  >
+                                    <option value="">Select Target...</option>
+                                    {storyMoments.map((m, mIdx) => (
+                                      <option key={m.id} value={m.id}>
+                                        {mIdx + 1}. {m.metadata?.caption || 'Untitled Moment'} ({m.id})
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <button
+                                  onClick={() => {
+                                    setEditingChoices(editingChoices.filter(c => c.id !== choice.id));
+                                  }}
+                                  className="self-end mb-0.5 p-2 text-red-400 hover:bg-red-400/20 rounded-lg transition-all"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Row 0: Word Selector */}
+                  {(editMode === 'text' || editMode === 'dialogue') && editingTextValue.trim() && (
+                    <div className="flex flex-wrap justify-center gap-2 max-w-2xl mx-auto py-2">
+                      <span className="text-white/50 text-xs w-full text-center mb-1">Tap words to apply effects:</span>
+                      {editingTextValue.split(' ').map((word, index) => {
+                        const active = selectedWordIndex === index;
+                        const hasEffect = editingWordEffects?.[index] && editingWordEffects[index] !== 'none';
+                        return (
+                          <button
+                            key={index}
+                            onClick={() => setSelectedWordIndex(active ? null : index)}
+                            className={`px-3 py-1 rounded-full text-sm font-medium transition-all border ${active ? 'bg-blue-600 border-blue-400 text-white scale-110 shadow-lg ring-2 ring-blue-300/50' : 'bg-white/10 border-white/20 text-white hover:bg-white/20'} ${hasEffect && !active ? 'border-green-400/50 text-green-100' : ''}`}
+                          >
+                            {word}
+                            {hasEffect && <span className="ml-1 text-[10px] text-green-400">★</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Row 1: Font & Size */}
+                  {(editMode === 'text' || editMode === 'dialogue') && (
                     <div className="flex flex-wrap items-center gap-4 justify-center text-white">
-                      <select
-                        value={editingFontFamily}
-                        onChange={(e) => setEditingFontFamily(e.target.value)}
-                        className="bg-gray-800 border border-gray-600 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500"
-                      >
-                        {FONTS.map(font => (
-                          <option key={font.value} value={font.value}>{font.name}</option>
-                        ))}
+                      {editMode === 'text' && (
+                        <button
+                          onClick={() => {
+                            setEditMode('dialogue');
+                            setIsDialogueMode(true);
+                          }}
+                          className="flex items-center gap-2 px-3 py-1.5 bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 border border-purple-400/30 rounded-lg text-xs font-bold transition-all"
+                        >
+                          <BookOpen size={14} />
+                          Switch to Box Style
+                        </button>
+                      )}
+                      <select value={editingFontFamily} onChange={(e) => setEditingFontFamily(e.target.value)} className="bg-gray-800 border border-gray-600 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500">
+                        {FONTS.map(font => <option key={font.value} value={font.value}>{font.name}</option>)}
                       </select>
-
                       <div className="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-1.5">
                         <span className="text-xs text-gray-400">Size</span>
-                        <input
-                          type="range"
-                          min="16"
-                          max="120"
-                          value={editingFontSize}
-                          onChange={(e) => setEditingFontSize(Number(e.target.value))}
-                          className="w-24 h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                        />
+                        <input type="range" min="16" max="120" value={editingFontSize} onChange={(e) => setEditingFontSize(Number(e.target.value))} className="w-24 h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500" />
                         <span className="text-xs w-6 text-center">{editingFontSize}</span>
                       </div>
                     </div>
+                  )}
 
-                    {/* Row 2: Colors & Effects */}
+                  {/* Row 2: Colors & Effects */}
+                  {(editMode === 'text' || editMode === 'dialogue') && (
                     <div className="flex flex-col md:flex-row items-center justify-center gap-4">
-                      {/* Effects Selector */}
                       <div className="flex gap-2 bg-gray-800 p-1 rounded-lg">
                         {EFFECTS.map(effect => {
-                          // Check if this effect is active (either globally or for selected word)
-                          let isActive = false;
-                          if (selectedWordIndex !== null) {
-                            isActive = editingWordEffects?.[selectedWordIndex] === effect.value;
-                          } else {
-                            isActive = editingEffect === effect.value;
-                          }
-
+                          const isActive = selectedWordIndex !== null ? editingWordEffects?.[selectedWordIndex] === effect.value : editingEffect === effect.value;
                           return (
-                            <button
-                              key={effect.value}
-                              onClick={() => handleEffectSelect(effect.value)}
-                              title={effect.name}
-                              className={`p-2 rounded-md transition-all ${isActive ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-gray-700'}`}
-                            >
+                            <button key={effect.value} onClick={() => handleEffectSelect(effect.value)} title={effect.name} className={`p-2 rounded-md transition-all ${isActive ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-gray-700'}`}>
                               {effect.icon ? effect.icon : <span className="text-xs font-bold px-1">T</span>}
                             </button>
                           );
                         })}
                       </div>
-
-                      {/* Colors */}
                       <div className="flex items-center justify-center gap-2">
                         {COLORS.map(color => (
-                          <button
-                            key={color}
-                            onClick={() => setEditingColor(color)}
-                            className={`w-6 h-6 rounded-full border-2 transition-transform hover:scale-110 ${editingColor === color ? 'border-white scale-110' : 'border-transparent'}`}
-                            style={{ backgroundColor: color }}
-                          />
+                          <button key={color} onClick={() => setEditingColor(color)} className={`w-6 h-6 rounded-full border-2 transition-transform hover:scale-110 ${editingColor === color ? 'border-white scale-110' : 'border-transparent'}`} style={{ backgroundColor: color }} />
                         ))}
                         {/* Custom color input */}
                         <div className="relative">
@@ -1124,37 +1727,34 @@ const App: React.FC = () => {
                         </div>
                       </div>
                     </div>
+                  )}
 
-                    {/* Input Field */}
+                  {/* Row 3: Input Field */}
+                  {(editMode === 'text' || editMode === 'dialogue') && (
                     <div className="flex justify-center w-full">
                       <input
                         autoFocus
                         type="text"
                         value={editingTextValue}
                         onChange={handleTextChange}
-                        placeholder="Type your caption..."
-                        className={`w-full max-w-2xl bg-white/10 border-b-2 border-white/30 px-2 py-2 text-center focus:outline-none focus:border-blue-500 focus:bg-white/20 transition-all placeholder-white/50`}
+                        placeholder={editMode === 'dialogue' ? "Enter dialogue line..." : "Type your caption..."}
+                        className="w-full max-w-2xl bg-white/10 border-b-2 border-white/30 px-2 py-2 text-center focus:outline-none focus:border-blue-500 focus:bg-white/20 transition-all placeholder-white/50"
                         style={{
-                          fontSize: Math.min(editingFontSize, 60) + 'px',
-                          fontFamily: editingFontFamily,
-                          color: editingColor,
-                          // Preview rendering in input is tricky with word effects, so keep input simple
-                          // The real preview is the image behind
-                          textShadow: '2px 2px 0 #000'
+                          fontSize: editMode === 'dialogue' ? '20px' : Math.min(editingFontSize, 60) + 'px',
+                          fontFamily: editMode === 'dialogue' ? 'inherit' : editingFontFamily,
+                          color: editMode === 'dialogue' ? '#FFFFFF' : editingColor,
+                          textShadow: editMode === 'dialogue' ? 'none' : '2px 2px 0 #000'
                         }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') saveText();
-                        }}
+                        onKeyDown={(e) => e.key === 'Enter' && saveText()}
                       />
                     </div>
-                  </div>
+                  )}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
-      )
-      }
+      )}
 
       <AddMomentModal
         isOpen={isAddModalOpen}

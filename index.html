@@ -138,6 +138,120 @@
       width: 3px;
       animation: drip-drop 3s infinite ease-in 1s;
     }
+
+    /* Sticker Specific Drip */
+    .sticker-drip {
+      position: relative;
+      display: inline-block;
+      color: transparent;
+      text-shadow: none;
+    }
+
+    .sticker-drip::after,
+    .sticker-drip::before {
+      content: '';
+      position: absolute;
+      bottom: 5px;
+      width: 4px;
+      background: rgba(255, 255, 255, 0.6);
+      border-radius: 0 0 10px 10px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .sticker-drip::after {
+      left: 30%;
+      animation: drip-drop 2.5s infinite ease-in;
+    }
+
+    .sticker-drip::before {
+      left: 70%;
+      width: 3px;
+      animation: drip-drop 3s infinite ease-in 1s;
+    }
+
+    /* Sticker Animations */
+    @keyframes sticker-float {
+
+      0%,
+      100% {
+        transform: translateY(0);
+      }
+
+      50% {
+        transform: translateY(-10px);
+      }
+    }
+
+    @keyframes sticker-pulse {
+
+      0%,
+      100% {
+        transform: scale(1);
+      }
+
+      50% {
+        transform: scale(1.1);
+      }
+    }
+
+    @keyframes sticker-jiggle {
+
+      0%,
+      100% {
+        transform: rotate(0deg);
+      }
+
+      25% {
+        transform: rotate(-5deg);
+      }
+
+      75% {
+        transform: rotate(5deg);
+      }
+    }
+
+    @keyframes sticker-spin {
+      from {
+        transform: rotate(0deg);
+      }
+
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @keyframes sticker-tween {
+      0% {
+        left: var(--tween-start-x);
+        top: var(--tween-start-y);
+      }
+
+      100% {
+        left: var(--tween-end-x);
+        top: var(--tween-end-y);
+      }
+    }
+
+    .animate-sticker-float {
+      animation: sticker-float 3s ease-in-out infinite;
+    }
+
+    .animate-sticker-pulse {
+      animation: sticker-pulse 2s ease-in-out infinite;
+    }
+
+    .animate-sticker-jiggle {
+      animation: sticker-jiggle 0.5s ease-in-out infinite;
+    }
+
+    .animate-sticker-spin {
+      animation: sticker-spin 4s linear infinite;
+    }
+
+    .animate-sticker-tween {
+      animation: sticker-tween var(--tween-duration, 2s) ease-in-out infinite alternate;
+    }
   </style>
   <script type="importmap">
 {

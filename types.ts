@@ -1,3 +1,24 @@
+export interface Sticker {
+  id: string;
+  content: string; // Emoji
+  x: number; // Percentage 0-100
+  y: number; // Percentage 0-100
+  scale: number;
+  scaleX?: number;
+  scaleY?: number;
+  rotation: number;
+  animation: 'none' | 'float' | 'pulse' | 'jiggle' | 'spin' | 'tween';
+  endX?: number;
+  endY?: number;
+  tweenDuration?: number; // seconds
+}
+
+export interface Choice {
+  id: string;
+  label: string;
+  targetMomentId: string;
+}
+
 export interface MomentMetadata {
   caption: string;
   tags: string[];
@@ -8,6 +29,14 @@ export interface MomentMetadata {
   overlayColor?: string;
   overlayEffect?: 'none' | 'neon' | 'drip';
   overlayWordEffects?: ('none' | 'neon' | 'drip' | null)[];
+  stickers?: Sticker[];
+  // Dialogue System
+  isDialogue?: boolean;
+  dialogueType?: 'speech' | 'narration';
+  characterName?: string;
+  characterPortrait?: string;
+  characterPosition?: 'left' | 'right';
+  choices?: Choice[];
 }
 
 export interface Moment {

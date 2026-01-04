@@ -1,6 +1,7 @@
 import React from 'react';
 import { Trash2, CheckCircle2, Circle } from 'lucide-react';
 import { Moment } from '../types';
+import { StickerDisplay } from './StickerDisplay';
 
 interface MomentCardProps {
   moment: Moment;
@@ -13,6 +14,9 @@ interface MomentCardProps {
   draggable?: boolean;
   onReorder?: (targetMoment: Moment) => void;
   onDragStart?: (e: React.DragEvent, moment: Moment) => void;
+  onDragOverCard?: (e: React.DragEvent, moment: Moment) => void;
+  onDragLeaveCard?: (e: React.DragEvent, moment: Moment) => void;
+  dropIndicator?: 'left' | 'right' | null;
 }
 
 export const MomentCard: React.FC<MomentCardProps> = ({
@@ -25,7 +29,10 @@ export const MomentCard: React.FC<MomentCardProps> = ({
   onToggleSelect,
   draggable = false,
   onReorder,
-  onDragStart
+  onDragStart,
+  onDragOverCard,
+  onDragLeaveCard,
+  dropIndicator
 }) => {
   const handleClick = (e: React.MouseEvent) => {
     if (isSelectionMode && onToggleSelect) {
@@ -51,10 +58,21 @@ export const MomentCard: React.FC<MomentCardProps> = ({
   };
 
   const handleDragOver = (e: React.DragEvent) => {
-    if (draggable && onReorder) {
+    if (draggable) {
       e.preventDefault();
       e.stopPropagation();
       e.dataTransfer.dropEffect = 'move';
+      if (onDragOverCard) {
+        onDragOverCard(e, moment);
+      }
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    if (draggable && onDragLeaveCard) {
+      e.preventDefault();
+      e.stopPropagation();
+      onDragLeaveCard(e, moment);
     }
   };
 
@@ -118,6 +136,7 @@ export const MomentCard: React.FC<MomentCardProps> = ({
       draggable={draggable}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
       <img
@@ -144,6 +163,14 @@ export const MomentCard: React.FC<MomentCardProps> = ({
 
       {renderOverlayText()}
 
+      {/* Stickers Display */}
+      {moment.metadata?.stickers && moment.metadata.stickers.length > 0 && (
+        <StickerDisplay
+          stickers={moment.metadata.stickers}
+          scale={0.5}
+        />
+      )}
+
       {selected && !isSelectionMode && (
         <div className="absolute top-2 left-2 text-blue-500 bg-white rounded-full">
           <CheckCircle2 size={20} fill="currentColor" className="text-white" />
@@ -163,6 +190,17 @@ export const MomentCard: React.FC<MomentCardProps> = ({
           >
             <Trash2 size={16} />
           </button>
+        </div>
+      )}
+      {/* Drop Indicators */}
+      {dropIndicator === 'left' && (
+        <div className="absolute left-0 top-0 bottom-0 w-1 z-50 animate-pulse">
+          <div className="h-full border-l-4 border-dashed border-blue-500 -ml-0.5" />
+        </div>
+      )}
+      {dropIndicator === 'right' && (
+        <div className="absolute right-0 top-0 bottom-0 w-1 z-50 animate-pulse">
+          <div className="h-full border-r-4 border-dashed border-blue-500 -mr-0.5" />
         </div>
       )}
     </div>
